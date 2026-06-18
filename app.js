@@ -361,10 +361,18 @@ function taskRow(task) {
 function renderMeetingActions() {
   renderList(els.meetingActionList, state.meetingDraftActions, (action) => {
     const owner = getDirector(action.ownerId);
+    const targetTask = getMeetingActionTarget(action);
+    const modeBadge = targetTask ? '<span class="badge green">Updates existing</span>' : '<span class="badge blue">New task</span>';
+    const statusBadge = action.statusHint ? `<span class="badge">${escapeHtml(action.statusHint)}</span>` : "";
+    const blockerBadge = action.blockerHint ? '<span class="badge amber">Blocker noted</span>' : "";
     const inferredDueBadge = action.inferredDueDate ? '<span class="badge amber">Due inferred</span>' : "";
     const ruleBadge = action.extractionRule ? `<span class="badge teal">${escapeHtml(action.extractionRule)}</span>` : "";
     const note = action.expectedOutcome ? `<p class="small-text">${escapeHtml(action.expectedOutcome)}</p>` : "";
+    const target = targetTask ? `<p class="small-text"><strong>Updates:</strong> ${escapeHtml(targetTask.title)}${escapeHtml(meetingActionChangeSummary(action, targetTask))}</p>` : "";
     const source = action.sourceLine ? `<p class="small-text"><strong>Source:</strong> ${escapeHtml(action.sourceLine)}</p>` : "";
+    const toggleButton = targetTask
+      ? `<button class="ghost-button compact-button" type="button" data-meeting-action="toggle-mode">${action.mode === "create" ? "Update existing" : "Create separately"}</button>`
+      : "";
     return `
       <article class="list-item" data-action-id="${escapeHtml(action.id)}">
         <div class="list-item-header">
@@ -372,13 +380,17 @@ function renderMeetingActions() {
             ${escapeHtml(action.title)}
             <span>${escapeHtml(owner.name)} due ${formatDate(action.dueDate)}</span>
           </div>
-          <div class="badge-row">${ruleBadge}${inferredDueBadge}</div>
+          <div class="badge-row">${modeBadge}${statusBadge}${blockerBadge}${ruleBadge}${inferredDueBadge}</div>
+        </div>
+        ${note}
+        ${target}
+        ${source}
+        <div class="button-row action-review-row">
+          ${toggleButton}
           <button class="icon-button" type="button" title="Remove action" data-meeting-action="delete">
             <svg viewBox="0 0 24 24"><path d="M9 3h6l1 2h4v2H4V5h4l1-2Zm-2 6h10l-.8 12H7.8L7 9Z"></path></svg>
           </button>
         </div>
-        ${note}
-        ${source}
       </article>
     `;
   }, "No meeting actions drafted yet.");
@@ -556,7 +568,20 @@ function handleMeetingActionClick(event) {
   if (!button) return;
 
   const item = button.closest("[data-action-id]");
-  state.meetingDraftActions = state.meetingDraftActions.filter((action) => action.id !== item.dataset.actionId);
+  const action = state.meetingDraftActions.find((candidate) => candidate.id === item.dataset.actionId);
+  if (!action) return;
+
+  if (button.dataset.meetingAction === "toggle-mode") {
+    action.mode = action.mode === "create" ? "auto" : "create";
+    saveState();
+    renderMeetingActions();
+    return;
+  }
+
+  if (button.dataset.meetingAction === "delete") {
+    state.meetingDraftActions = state.meetingDraftActions.filter((candidate) => candidate.id !== item.dataset.actionId);
+  }
+
   saveState();
   renderMeetingActions();
 }
@@ -617,6 +642,26 @@ function parseActionCandidate(sourceLine) {
 
   if (speakerTurn.owner && startsWithActionVerb(line)) {
     return actionFromOwner(speakerTurn.owner, line, sourceLine, "Speaker action");
+  }
+
+  const completed = line.match(/^(?:the\s+)?(.+?)\s+(?:completed|finished|resolved|closed|booked|confirmed|sent|submitted|filed|approved)\s+(.+)$/i);
+  if (completed) {
+    return actionFromParts(completed[1], completed[2], sourceLine, "Status update", { statusHint: "Done" });
+  }
+
+  const blocked = line.match(/^(?:the\s+)?(.+?)\s+(?:is|are|was|were)?\s*(?:blocked|stuck|waiting|awaiting|delayed)\s+(?:on|for|by)?\s+(.+)$/i);
+  if (blocked) {
+    return actionFromParts(blocked[1], blocked[2], sourceLine, "Status update", {
+      statusHint: "Waiting",
+      blockerHint: cleanSentence(blocked[2])
+    });
+  }
+
+  const rescheduled = line.match(/^(?:the\s+)?(.+?)\s+(?:moved|changed|extended|pushed|rescheduled)\s+(.+?)\s+(?:to|until|by)\s+(.+)$/i);
+  if (rescheduled) {
+    return actionFromParts(rescheduled[1], `${rescheduled[2]} by ${rescheduled[3]}`, sourceLine, "Due date update", {
+      statusHint: "In progress"
+    });
   }
 
   const passive = line.match(/^(?:the\s+)?(.+?)\s+(?:was|were|is|are|has been|have been)\s+(?:told|asked|assigned|directed|tasked)\s+to\s+(.+)$/i);
@@ -863,11 +908,11 @@ function formatTranscriptSummaryLine(entry, text) {
   return `${entry.speakerName}: ${cleanText}`;
 }
 
-function actionFromParts(ownerText, titleText, sourceLine, extractionRule) {
-  return actionFromOwner(findDirectorByText(ownerText), titleText, sourceLine, extractionRule);
+function actionFromParts(ownerText, titleText, sourceLine, extractionRule, metadata = {}) {
+  return actionFromOwner(findDirectorByText(ownerText), titleText, sourceLine, extractionRule, metadata);
 }
 
-function actionFromOwner(owner, titleText, sourceLine, extractionRule) {
+function actionFromOwner(owner, titleText, sourceLine, extractionRule, metadata = {}) {
   const dueInfo = extractDueDateFromTask(titleText);
   const dueDate = dueInfo.dueDate || defaultActionDueDate();
   const inferredDueDate = !dueInfo.dueDate;
@@ -894,7 +939,8 @@ function actionFromOwner(owner, titleText, sourceLine, extractionRule) {
     expectedOutcome: noteParts.join(" "),
     inferredDueDate,
     extractionRule,
-    sourceLine
+    sourceLine,
+    ...metadata
   };
 }
 
@@ -957,7 +1003,9 @@ function draftMinutes() {
   const actionLines = state.meetingDraftActions.map((action) => {
     const owner = getDirector(action.ownerId);
     const inferred = action.inferredDueDate ? " | Due date inferred" : "";
-    return `- ${action.title} | Owner: ${owner.name} | Due: ${formatDate(action.dueDate)}${inferred}`;
+    const targetTask = getMeetingActionTarget(action);
+    const target = targetTask ? ` | Updates: ${targetTask.title}${meetingActionChangeSummary(action, targetTask)}` : " | Creates new task";
+    return `- ${action.title} | Owner: ${owner.name} | Due: ${formatDate(action.dueDate)}${target}${inferred}`;
   });
 
   const minutes = [
@@ -992,29 +1040,23 @@ function saveMeeting() {
 
   const meetingId = makeId("meeting");
   const actionIds = [];
+  let createdCount = 0;
+  let updatedCount = 0;
 
   state.meetingDraftActions.forEach((action) => {
-    const taskId = makeId("task");
-    actionIds.push(taskId);
-    state.tasks.push({
-      id: taskId,
-      title: action.title,
-      ownerId: action.ownerId,
-      dueDate: action.dueDate,
-      priority: action.priority || "Normal",
-      status: "Not started",
-      blocker: "",
-      expectedOutcome: action.expectedOutcome || "",
-      sourceMeeting: meetingId,
-      createdAt: todayISO(),
-      lastReminderAt: "",
-      updates: [
-        {
-          date: todayISO(),
-          body: "Created from meeting minutes."
-        }
-      ]
-    });
+    const targetTask = getMeetingActionTarget(action);
+
+    if (targetTask) {
+      updateTaskFromMeetingAction(targetTask, action, meetingId);
+      addUnique(actionIds, targetTask.id);
+      updatedCount += 1;
+      return;
+    }
+
+    const task = createTaskFromMeetingAction(action, meetingId);
+    state.tasks.push(task);
+    addUnique(actionIds, task.id);
+    createdCount += 1;
   });
 
   state.meetings.push({
@@ -1031,7 +1073,198 @@ function saveMeeting() {
   state.meetingDraftActions = [];
   saveState();
   render();
-  showToast("Meeting saved and action items added to the task board.");
+  showToast(meetingSaveMessage(createdCount, updatedCount));
+}
+
+function createTaskFromMeetingAction(action, meetingId) {
+  return {
+    id: makeId("task"),
+    title: action.title,
+    ownerId: action.ownerId,
+    dueDate: action.dueDate,
+    priority: action.priority || "Normal",
+    status: action.statusHint || "Not started",
+    blocker: action.blockerHint || "",
+    expectedOutcome: action.expectedOutcome || "",
+    sourceMeeting: meetingId,
+    createdAt: todayISO(),
+    lastReminderAt: "",
+    updates: [
+      {
+        date: todayISO(),
+        body: "Created from meeting minutes."
+      }
+    ]
+  };
+}
+
+function updateTaskFromMeetingAction(task, action, meetingId) {
+  const previous = {
+    dueDate: task.dueDate,
+    status: task.status,
+    blocker: task.blocker || ""
+  };
+  const statusHint = action.statusHint || inferStatusFromMeetingAction(action);
+  const blockerHint = action.blockerHint || inferBlockerFromMeetingAction(action);
+
+  if (action.dueDate && !action.inferredDueDate) {
+    task.dueDate = action.dueDate;
+  }
+
+  if (statusHint) {
+    task.status = statusHint;
+  } else if (task.status === "Not started") {
+    task.status = "In progress";
+  }
+
+  if (blockerHint) {
+    task.blocker = blockerHint;
+    if (task.status !== "Done") {
+      task.status = "Waiting";
+    }
+  } else if (task.status === "Done") {
+    task.blocker = "";
+  }
+
+  task.updates = Array.isArray(task.updates) ? task.updates : [];
+  task.updates.push({
+    date: todayISO(),
+    body: buildMeetingTaskUpdateBody(action, previous, task)
+  });
+
+  task.lastUpdatedFromMeeting = meetingId;
+}
+
+function buildMeetingTaskUpdateBody(action, previous, task) {
+  const changes = [];
+  if (previous.dueDate !== task.dueDate) {
+    changes.push(`due date changed from ${formatDate(previous.dueDate)} to ${formatDate(task.dueDate)}`);
+  }
+  if (previous.status !== task.status) {
+    changes.push(`status changed from ${previous.status} to ${task.status}`);
+  }
+  if ((previous.blocker || "") !== (task.blocker || "")) {
+    changes.push(task.blocker ? `blocker recorded: ${task.blocker}` : "blocker cleared");
+  }
+
+  const source = action.sourceLine ? ` Source: ${action.sourceLine}` : "";
+  const changeText = changes.length ? ` ${changes.join("; ")}.` : "";
+  return `Updated from meeting: ${action.title}.${changeText}${source}`;
+}
+
+function meetingSaveMessage(createdCount, updatedCount) {
+  const parts = [];
+  if (createdCount) parts.push(`${createdCount} added`);
+  if (updatedCount) parts.push(`${updatedCount} updated`);
+  return parts.length ? `Meeting saved: ${parts.join(", ")}.` : "Meeting saved.";
+}
+
+function addUnique(items, value) {
+  if (!items.includes(value)) {
+    items.push(value);
+  }
+}
+
+function getMeetingActionTarget(action) {
+  if (action.mode === "create") return null;
+
+  const candidates = state.tasks
+    .filter((task) => task.ownerId === action.ownerId)
+    .filter((task) => task.status !== "Done" || action.statusHint === "Done")
+    .map((task) => ({
+      task,
+      score: taskMatchScore(task, action)
+    }))
+    .filter((candidate) => candidate.score >= 0.52)
+    .sort((a, b) => b.score - a.score || a.task.dueDate.localeCompare(b.task.dueDate));
+
+  return candidates[0]?.task || null;
+}
+
+function taskMatchScore(task, action) {
+  const taskTokens = taskMatchTokens(task.title);
+  const actionTokens = taskMatchTokens(action.title);
+  if (taskTokens.length < 2 || actionTokens.length < 2) return 0;
+
+  const taskSet = new Set(taskTokens);
+  const actionSet = new Set(actionTokens);
+  const overlap = [...actionSet].filter((token) => taskSet.has(token)).length;
+  const coverage = overlap / Math.min(taskSet.size, actionSet.size);
+  const balance = (2 * overlap) / (taskSet.size + actionSet.size);
+  return Math.max(coverage, balance);
+}
+
+function taskMatchTokens(text) {
+  const stopWords = new Set([
+    "a", "an", "and", "are", "be", "by", "for", "from", "in", "is", "it", "of", "on", "or", "the", "to",
+    "will", "with", "task", "update", "status", "current", "please", "should", "need", "needs"
+  ]);
+
+  return normalizeLookupText(text)
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter((word) => !stopWords.has(word))
+    .map(normalizeTaskToken)
+    .filter(Boolean);
+}
+
+function normalizeTaskToken(word) {
+  const stem = word
+    .replace(/ing$/, "")
+    .replace(/ed$/, "")
+    .replace(/s$/, "");
+  return {
+    book: "booking",
+    confirm: "booking",
+    reserve: "booking",
+    reservation: "booking",
+    contact: "call",
+    email: "send",
+    message: "send"
+  }[stem] || stem;
+}
+
+function meetingActionChangeSummary(action, targetTask) {
+  const changes = [];
+  const statusHint = action.statusHint || inferStatusFromMeetingAction(action);
+  const blockerHint = action.blockerHint || inferBlockerFromMeetingAction(action);
+
+  if (action.dueDate && !action.inferredDueDate && action.dueDate !== targetTask.dueDate) {
+    changes.push(`due ${formatDate(targetTask.dueDate)} -> ${formatDate(action.dueDate)}`);
+  }
+  if (statusHint && statusHint !== targetTask.status) {
+    changes.push(`status -> ${statusHint}`);
+  }
+  if (blockerHint && blockerHint !== targetTask.blocker) {
+    changes.push(`blocker -> ${blockerHint}`);
+  }
+
+  return changes.length ? ` (${changes.join("; ")})` : "";
+}
+
+function inferStatusFromMeetingAction(action) {
+  const text = meetingActionText(action);
+  if (/\b(done|completed|finished|resolved|closed|booked|confirmed|sent|submitted|filed|approved)\b/i.test(text)) {
+    return "Done";
+  }
+  if (/\b(blocked|stuck|waiting|awaiting|held up|delayed|cannot|can't)\b/i.test(text)) {
+    return "Waiting";
+  }
+  if (/\b(started|working|in progress|following up|will|shall|should|needs to|need to|going to)\b/i.test(text)) {
+    return "In progress";
+  }
+  return "";
+}
+
+function inferBlockerFromMeetingAction(action) {
+  const text = meetingActionText(action);
+  const blocker = text.match(/\b(?:blocked by|blocked on|stuck on|waiting for|waiting on|awaiting|held up by|delayed by)\s+(.+)$/i);
+  if (!blocker) return "";
+  return cleanSentence(blocker[1].replace(/\s+(?:by|before|due|on)\s+.+$/i, ""));
+}
+
+function meetingActionText(action) {
+  return [action.title, action.sourceLine, action.expectedOutcome].filter(Boolean).join(" ");
 }
 
 function insertSpeakerTurn() {
@@ -1477,7 +1710,12 @@ function normalizeLookupWord(word) {
 }
 
 function getLatestUpdate(task) {
-  return [...(task.updates || [])].sort((a, b) => b.date.localeCompare(a.date))[0];
+  return (task.updates || []).reduce((latest, update) => {
+    if (!latest || update.date >= latest.date) {
+      return update;
+    }
+    return latest;
+  }, null);
 }
 
 function sortTasks(a, b) {

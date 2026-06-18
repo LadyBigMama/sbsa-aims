@@ -292,6 +292,12 @@ button {
   border: 0;
 }
 
+.compact-button {
+  min-height: 34px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -389,6 +395,10 @@ button {
   display: flex;
   justify-content: space-between;
   gap: 12px;
+}
+
+.action-review-row {
+  justify-content: flex-end;
 }
 
 .list-item-title {
