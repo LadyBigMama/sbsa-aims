@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>SBSA AIMS Board Action Tracker</title>
+    <link rel="stylesheet" href="styles.css?v=20260618-extraction">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Primary">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" role="img">
+              <path d="M4 17.2 9.8 5.5l3.4 6.6 2.1-3.9L20 17.2h-3.2l-1.5-3-1.9 3H4Z"></path>
+            </svg>
+          </div>
+          <div>
+            <h1>SBSA AIMS</h1>
+            <p>Board Action Tracker</p>
+          </div>
+        </div>
+
+        <nav class="nav-list" aria-label="Application sections">
+          <button class="nav-button is-active" type="button" data-view="dashboard">
+            <span class="button-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M4 13h7V4H4v9Zm0 7h7v-5H4v5Zm9 0h7v-9h-7v9Zm0-16v5h7V4h-7Z"></path></svg>
+            </span>
+            Dashboard
+          </button>
+          <button class="nav-button" type="button" data-view="tasks">
+            <span class="button-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M9 6h11v2H9V6ZM4 5.7 5.3 4.4 7.6 6.7 6.3 8 4 5.7ZM9 11h11v2H9v-2ZM4 10.7l1.3-1.3 2.3 2.3L6.3 13 4 10.7ZM9 16h11v2H9v-2ZM4 15.7l1.3-1.3 2.3 2.3L6.3 18 4 15.7Z"></path></svg>
+            </span>
+            Tasks
+          </button>
+          <button class="nav-button" type="button" data-view="meeting">
+            <span class="button-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M7 2h2v2h6V2h2v2h3v18H4V4h3V2Zm11 8H6v10h12V10ZM6 8h12V6H6v2Z"></path></svg>
+            </span>
+            Meeting
+          </button>
+          <button class="nav-button" type="button" data-view="reminders">
+            <span class="button-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 22a2.8 2.8 0 0 0 2.6-1.8H9.4A2.8 2.8 0 0 0 12 22Zm7-6V11a7 7 0 0 0-5-6.7V3a2 2 0 1 0-4 0v1.3A7 7 0 0 0 5 11v5l-2 2v1h18v-1l-2-2Z"></path></svg>
+            </span>
+            Reminders
+          </button>
+          <button class="nav-button" type="button" data-view="directors">
+            <span class="button-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0 2c-4.4 0-8 2-8 4.5V20h16v-1.5C20 16 16.4 14 12 14Z"></path></svg>
+            </span>
+            Directors
+          </button>
+          <button class="nav-button" type="button" data-view="reports">
+            <span class="button-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6V2Zm8 1.5V8h4.5L14 3.5ZM8 12h8v2H8v-2Zm0 4h8v2H8v-2Zm0-8h4v2H8V8Z"></path></svg>
+            </span>
+            Reports
+          </button>
+        </nav>
+
+        <div class="sidebar-footer">
+          <button class="ghost-button full-width" type="button" id="resetDemoButton">
+            <span class="button-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 5V2L7 7l5 5V9a5 5 0 1 1-4.6 7H5.3A7 7 0 1 0 12 5Z"></path></svg>
+            </span>
+            Reset demo data
+          </button>
+        </div>
+      </aside>
+
+      <main class="main-panel">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Monthly board cycle</p>
+            <h2 id="viewTitle">Dashboard</h2>
+          </div>
+          <div class="topbar-actions">
+            <label class="file-button" for="importFile">
+              <span class="button-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M11 4h2v9l3.5-3.5 1.4 1.4L12 16.8l-5.9-5.9 1.4-1.4L11 13V4ZM5 18h14v2H5v-2Z"></path></svg>
+              </span>
+              Import
+            </label>
+            <input class="sr-only" id="importFile" type="file" accept="application/json">
+            <button class="secondary-button" type="button" id="exportDataButton">
+              <span class="button-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M11 4h2v9l3.5-3.5 1.4 1.4L12 16.8l-5.9-5.9 1.4-1.4L11 13V4ZM5 20v-2h14v2H5Z"></path></svg>
+              </span>
+              Export
+            </button>
+          </div>
+        </header>
+
+        <section class="view is-active" id="dashboardView" aria-labelledby="dashboardHeading">
+          <div class="section-heading">
+            <div>
+              <h3 id="dashboardHeading">Board workload at a glance</h3>
+              <p>Everything that needs follow-up before the next meeting.</p>
+            </div>
+            <button class="primary-button" type="button" data-view-jump="tasks">
+              <span class="button-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5Z"></path></svg>
+              </span>
+              New task
+            </button>
+          </div>
+
+          <div class="metric-grid" id="metricGrid"></div>
+
+          <div class="two-column">
+            <section class="panel">
+              <div class="panel-heading">
+                <h4>Needs weekly update</h4>
+                <button class="text-button" type="button" data-view-jump="reminders">Open reminders</button>
+              </div>
+              <div id="weeklyUpdateList" class="stack-list"></div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <h4>Overdue and blocked</h4>
+                <button class="text-button" type="button" data-view-jump="tasks">Review tasks</button>
+              </div>
+              <div id="riskList" class="stack-list"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="tasksView" aria-labelledby="tasksHeading">
+          <div class="section-heading">
+            <div>
+              <h3 id="tasksHeading">Task board</h3>
+              <p>One owner, one due date, one current status for every action item.</p>
+            </div>
+          </div>
+
+          <form class="form-grid compact-form" id="taskForm">
+            <label>
+              Task
+              <input id="taskTitle" name="title" type="text" placeholder="Prepare renewal email" required>
+            </label>
+            <label>
+              Owner
+              <select id="taskOwner" name="ownerId" required></select>
+            </label>
+            <label>
+              Due date
+              <input id="taskDueDate" name="dueDate" type="date" required>
+            </label>
+            <label>
+              Priority
+              <select id="taskPriority" name="priority">
+                <option>Normal</option>
+                <option>High</option>
+                <option>Low</option>
+              </select>
+            </label>
+            <label class="wide-field">
+              Expected outcome
+              <input id="taskOutcome" name="expectedOutcome" type="text" placeholder="What should be true when this is done?">
+            </label>
+            <button class="primary-button form-submit" type="submit">
+              <span class="button-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5Z"></path></svg>
+              </span>
+              Add task
+            </button>
+          </form>
+
+          <div class="filter-row">
+            <label>
+              Owner
+              <select id="ownerFilter">
+                <option value="all">All owners</option>
+              </select>
+            </label>
+            <label>
+              Status
+              <select id="statusFilter">
+                <option value="all">All statuses</option>
+                <option>Not started</option>
+                <option>In progress</option>
+                <option>Waiting</option>
+                <option>Done</option>
+              </select>
+            </label>
+            <label>
+              Search
+              <input id="taskSearch" type="search" placeholder="Task, blocker, owner">
+            </label>
+          </div>
+
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Task</th>
+                  <th>Owner</th>
+                  <th>Due</th>
+                  <th>Status</th>
+                  <th>Blocker</th>
+                  <th>Latest update</th>
+                  <th class="actions-cell">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="taskTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="view" id="meetingView" aria-labelledby="meetingHeading">
+          <div class="section-heading">
+            <div>
+              <h3 id="meetingHeading">Meeting capture</h3>
+              <p>Record the discussion, draft minutes, and turn decisions into assigned tasks.</p>
+            </div>
+            <div class="button-row">
+              <button class="secondary-button" type="button" id="startTranscriptButton">
+                <span class="button-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-3.1a7 7 0 0 0 6-6.9h-2Z"></path></svg>
+                </span>
+                Start dictation
+              </button>
+              <button class="ghost-button" type="button" id="checkMicButton">
+                <span class="button-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Zm-1 5v3h2v-3h3v-2H8v2h3Zm6-8a5 5 0 0 1-10 0H5a7 7 0 0 0 14 0h-2Z"></path></svg>
+                </span>
+                Check mic
+              </button>
+              <button class="ghost-button" type="button" id="stopTranscriptButton" disabled>
+                <span class="button-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M6 6h12v12H6V6Z"></path></svg>
+                </span>
+                Stop
+              </button>
+            </div>
+          </div>
+
+          <div class="notice" id="micNotice" hidden></div>
+
+          <div class="meeting-grid">
+            <form class="panel meeting-form" id="meetingForm">
+              <div class="form-grid">
+                <label>
+                  Meeting title
+                  <input id="meetingTitle" type="text" value="Monthly Board Meeting" required>
+                </label>
+                <label>
+                  Date
+                  <input id="meetingDate" type="date" required>
+                </label>
+                <label class="wide-field">
+                  Attendees
+                  <input id="meetingAttendees" type="text" placeholder="Names or roles, separated by commas">
+                </label>
+              </div>
+              <label>
+                Agenda
+                <textarea id="meetingAgenda" rows="5" placeholder="Membership, budget, flying sites, events, safety, old business, new business"></textarea>
+              </label>
+              <div class="field-group">
+                <span class="field-label">Transcript or notes</span>
+                <div class="speaker-controls">
+                  <label>
+                    Current speaker
+                    <select id="speakerSelect"></select>
+                  </label>
+                  <label>
+                    Guest speaker
+                    <input id="speakerOther" type="text" placeholder="Guest or member name">
+                  </label>
+                  <button class="ghost-button" type="button" id="insertSpeakerButton">
+                    <span class="button-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0 2c-4.4 0-8 2-8 4.5V20h16v-1.5C20 16 16.4 14 12 14Z"></path></svg>
+                    </span>
+                    Insert speaker
+                  </button>
+                </div>
+                <textarea id="meetingTranscript" rows="12" aria-label="Transcript or notes" placeholder="Speak using dictation, paste a transcript, or type meeting notes here. Examples: President: I will reach out to Friends of Toro to set up a meeting by June 25. Action: Membership Director - send renewal email due 2026-06-15."></textarea>
+              </div>
+              <div class="button-row">
+                <button class="secondary-button" type="button" id="extractActionsButton">
+                  <span class="button-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><path d="M4 4h16v2H4V4Zm0 4h10v2H4V8Zm0 4h16v2H4v-2Zm0 4h10v2H4v-2Zm13.6-6.4L21 13l-6.5 6.5L11 16l1.4-1.4 2.1 2.1 5.1-5.1-2-2Z"></path></svg>
+                  </span>
+                  Extract action lines
+                </button>
+                <button class="secondary-button" type="button" id="draftMinutesButton">
+                  <span class="button-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><path d="M5 3h14v18H5V3Zm3 4h8V5H8v2Zm0 4h8V9H8v2Zm0 4h5v-2H8v2Z"></path></svg>
+                  </span>
+                  Draft minutes
+                </button>
+              </div>
+            </form>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <h4>Meeting action items</h4>
+                <span class="muted small-text">Added to task board when minutes are saved</span>
+              </div>
+
+              <form class="form-grid action-form" id="meetingActionForm">
+                <label class="wide-field">
+                  Action
+                  <input id="meetingActionTitle" type="text" placeholder="Confirm annual meeting venue">
+                </label>
+                <label>
+                  Owner
+                  <select id="meetingActionOwner"></select>
+                </label>
+                <label>
+                  Due
+                  <input id="meetingActionDue" type="date">
+                </label>
+                <button class="secondary-button form-submit" type="submit">Add action</button>
+              </form>
+
+              <div id="meetingActionList" class="stack-list"></div>
+
+              <label>
+                Draft minutes
+                <textarea id="meetingMinutes" rows="12" placeholder="Generated minutes will appear here for review before saving."></textarea>
+              </label>
+
+              <div class="button-row">
+                <button class="primary-button" type="button" id="saveMeetingButton">
+                  <span class="button-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><path d="M17 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7l-4-4ZM12 19a3 3 0 1 1 0-6 3 3 0 0 1 0 6ZM6 5h9v4H6V5Z"></path></svg>
+                  </span>
+                  Save minutes and tasks
+                </button>
+                <button class="ghost-button" type="button" id="copyMinutesButton">Copy minutes</button>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="remindersView" aria-labelledby="remindersHeading">
+          <div class="section-heading">
+            <div>
+              <h3 id="remindersHeading">Weekly check-ins</h3>
+              <p>Send concise reminders and record each director's reply against the right task.</p>
+            </div>
+            <button class="secondary-button" type="button" id="copyDigestButton">
+              <span class="button-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M16 1H4a2 2 0 0 0-2 2v12h2V3h12V1Zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2Zm0 16H8V7h11v14Z"></path></svg>
+              </span>
+              Copy weekly digest
+            </button>
+          </div>
+
+          <div class="two-column">
+            <section class="panel">
+              <div class="panel-heading">
+                <h4>Reminder queue</h4>
+                <span class="muted small-text">Mail app links are generated locally</span>
+              </div>
+              <div id="reminderQueue" class="stack-list"></div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <h4>Record a reply</h4>
+              </div>
+              <form id="replyForm" class="form-stack">
+                <label>
+                  Task
+                  <select id="replyTaskSelect" required></select>
+                </label>
+                <label>
+                  New status
+                  <select id="replyStatus">
+                    <option>In progress</option>
+                    <option>Waiting</option>
+                    <option>Done</option>
+                    <option>Not started</option>
+                  </select>
+                </label>
+                <label>
+                  Reply or progress note
+                  <textarea id="replyBody" rows="7" placeholder="Paste the director's reply or summarize the progress update." required></textarea>
+                </label>
+                <label>
+                  Blocker, if any
+                  <input id="replyBlocker" type="text" placeholder="Awaiting budget approval">
+                </label>
+                <button class="primary-button" type="submit">Save reply</button>
+              </form>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="directorsView" aria-labelledby="directorsHeading">
+          <div class="section-heading">
+            <div>
+              <h3 id="directorsHeading">Director roster</h3>
+              <p>Keep owners explicit so no task lives in a committee fog.</p>
+            </div>
+          </div>
+
+          <form class="form-grid compact-form" id="directorForm">
+            <label>
+              Name
+              <input id="directorName" type="text" placeholder="Membership Director" required>
+            </label>
+            <label>
+              Role
+              <input id="directorRole" type="text" placeholder="Membership">
+            </label>
+            <label>
+              Email
+              <input id="directorEmail" type="email" placeholder="membership@example.org">
+            </label>
+            <label class="wide-field">
+              Responsibility area
+              <input id="directorArea" type="text" placeholder="Member recruitment and retention">
+            </label>
+            <button class="primary-button form-submit" type="submit">Add director</button>
+          </form>
+
+          <div id="directorList" class="director-grid"></div>
+        </section>
+
+        <section class="view" id="reportsView" aria-labelledby="reportsHeading">
+          <div class="section-heading">
+            <div>
+              <h3 id="reportsHeading">Board report</h3>
+              <p>A ready-to-copy report for the next BOD packet or meeting agenda.</p>
+            </div>
+            <div class="button-row">
+              <button class="secondary-button" type="button" id="copyReportButton">Copy report</button>
+              <button class="ghost-button" type="button" id="printReportButton">Print</button>
+            </div>
+          </div>
+
+          <div class="panel">
+            <pre id="boardReport" class="report-output"></pre>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <template id="emptyStateTemplate">
+      <div class="empty-state">
+        <strong>No items yet</strong>
+        <span>Add the first task or action item to make this section useful.</span>
+      </div>
+    </template>
+
+    <script src="app.js?v=20260618-compound-actions"></script>
+  </body>
+</html>
