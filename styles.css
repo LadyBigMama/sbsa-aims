@@ -486,6 +486,11 @@ button {
   box-shadow: var(--shadow);
 }
 
+.director-add-form {
+  margin-top: 18px;
+  margin-bottom: 0;
+}
+
 .wide-field {
   grid-column: 1 / -1;
 }
@@ -822,17 +827,33 @@ button:focus-visible,
 .director-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-rows: minmax(430px, auto);
   gap: 14px;
+  align-items: stretch;
 }
 
 .director-card {
   display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   gap: 10px;
+  min-height: 430px;
   padding: 16px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
+}
+
+.director-card-header {
+  min-height: 58px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.director-title-block {
+  min-width: 0;
 }
 
 .director-card h4,
@@ -842,6 +863,7 @@ button:focus-visible,
 
 .director-card h4 {
   font-size: 16px;
+  line-height: 1.25;
 }
 
 .director-edit-grid {
@@ -852,7 +874,9 @@ button:focus-visible,
 
 .director-card dl {
   display: grid;
-  gap: 6px;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+  min-height: 0;
   margin: 0;
 }
 
@@ -864,14 +888,19 @@ button:focus-visible,
 }
 
 .director-card dd {
+  min-height: 0;
   margin: 0;
+  overflow: auto;
 }
 
 .responsibility-list {
   display: grid;
-  gap: 5px;
+  gap: 6px;
   margin: 0;
   padding-left: 18px;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.35;
 }
 
 .responsibility-list li {
@@ -957,7 +986,8 @@ button:focus-visible,
   .topbar,
   .section-heading,
   .panel-heading,
-  .list-item-header {
+  .list-item-header,
+  .director-card-header {
     align-items: stretch;
     flex-direction: column;
   }
@@ -981,6 +1011,18 @@ button:focus-visible,
 
   .wide-field {
     grid-column: auto;
+  }
+
+  .director-grid {
+    grid-auto-rows: auto;
+  }
+
+  .director-card {
+    min-height: auto;
+  }
+
+  .director-card dd {
+    overflow: visible;
   }
 
   .button-row {

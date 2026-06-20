@@ -749,8 +749,8 @@ function renderDirectors() {
     const taskCount = state.tasks.filter((task) => task.ownerId === director.id && task.status !== "Done").length;
     return `
       <article class="director-card" data-director-id="${escapeHtml(director.id)}">
-        <div class="list-item-header">
-          <div>
+        <div class="director-card-header">
+          <div class="director-title-block">
             <h4>${escapeHtml(director.role || director.name || "Director")}</h4>
             <p class="muted">${director.name ? escapeHtml(director.name) : "No name assigned"}</p>
           </div>
@@ -766,7 +766,7 @@ function renderDirectors() {
             <input data-director-field="email" type="email" value="${escapeAttribute(director.email || "")}" placeholder="name@example.org">
           </label>
         </div>
-        <dl>
+        <dl class="director-responsibility">
           <dt>Responsibility</dt>
           <dd>${formatResponsibilityList(director.area)}</dd>
         </dl>

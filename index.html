@@ -408,7 +408,9 @@
             </div>
           </div>
 
-          <form class="form-grid compact-form" id="directorForm">
+          <div id="directorList" class="director-grid"></div>
+
+          <form class="form-grid compact-form director-add-form" id="directorForm">
             <label>
               Name
               <input id="directorName" type="text" placeholder="Membership Director" required>
@@ -427,8 +429,6 @@
             </label>
             <button class="primary-button form-submit" type="submit">Add director</button>
           </form>
-
-          <div id="directorList" class="director-grid"></div>
         </section>
 
         <section class="view" id="reportsView" aria-labelledby="reportsHeading">
