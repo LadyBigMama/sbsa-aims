@@ -4,98 +4,100 @@ const defaultState = {
   directors: [
     {
       id: "president",
-      name: "President",
-      role: "Board leadership",
+      name: "",
+      role: "President",
       email: "",
-      area: "Meeting agenda, executive follow-up, and final accountability"
+      area: "Preside over Club and BOD meetings; announce meetings with agendas; provide general club supervision; make sure board responsibilities are completed; arrange monthly BOD meeting locations; coordinate community response when needed; manage nominations, elections, and board handoff."
     },
     {
-      id: "membership",
-      name: "Membership Director",
-      role: "Membership",
+      id: "vice-president",
+      name: "",
+      role: "Vice President",
       email: "",
-      area: "Member recruitment, renewals, and retention"
+      area: "Cover duties of an absent President; reserve the Club Meeting venue; confirm meeting entertainment; notify membership of meeting content at least one week ahead; coordinate and set up media equipment."
     },
     {
-      id: "events",
-      name: "Events Director",
-      role: "Events",
+      id: "treasurer",
+      name: "",
+      role: "Treasurer",
       email: "",
-      area: "Association events, venues, and attendance"
+      area: "Check the PO Box; reconcile bank statements; collect and deposit dues; present financials at BOD meetings; move PayPal funds as needed; pay approved bills; organize tax and financial records; file tax and state documents; close books and prepare handoff."
     },
     {
-      id: "finance",
-      name: "Finance Director",
-      role: "Finance",
+      id: "secretary",
+      name: "",
+      role: "Secretary",
       email: "",
-      area: "Budget, financial reporting, and approvals"
+      area: "Prepare agendas as requested; keep BOD and Club Meeting minutes with action items; email minutes to BOD members; save minutes to Google Drive; monitor flysbsa@gmail.com; delegate email responses; distribute board responsibilities and contact lists; support chapter renewal and elections."
     },
     {
-      id: "safety",
-      name: "Safety Director",
-      role: "Safety",
+      id: "activities",
+      name: "",
+      role: "Activities Director",
       email: "",
-      area: "Risk management, incident follow-up, and safety notices"
+      area: "Compile and introduce activity ideas; promote clinics, trips, parties, and events; reserve Big Sur and Dunlap; manage event arrangements; delegate event tasks; provide dates, costs, directions, and details for announcements; coordinate reimbursements, fee collection, and payment options."
+    },
+    {
+      id: "webmaster",
+      name: "",
+      role: "Webmaster",
+      email: "",
+      area: "Update club meeting times, welcome page, bulletin board, and calendar; announce trips and activities online; handle website maintenance; update annual membership-form links; confirm web host contact and fees; hand off website administration information."
+    },
+    {
+      id: "public-relations",
+      name: "",
+      role: "Public Relations Officer",
+      email: "",
+      area: "Maintain positive relationships with landowners, neighbors, public agencies, and community contacts; serve as club point of contact; keep the Board apprised of community issues; review site insurance and local site-use guidelines; post public event information; recommend recognition for helpful community members."
+    },
+    {
+      id: "elings-liaison",
+      name: "",
+      role: "Elings Park Liaison",
+      email: "",
+      area: "Represent SBSA with Elings Park; maintain training status; keep hill guidelines updated and distributed; serve as point of contact between the club and Elings; inform the BOD of park developments."
+    },
+    {
+      id: "safety-coordinator",
+      name: "",
+      role: "Safety Coordinator",
+      email: "",
+      area: "Update guidelines and site ratings for membership and chapter renewal; send annual reminders to members about local emergency and out-landing procedures."
     }
   ],
-  tasks: [
-    {
-      id: "task-renewal-email",
-      title: "Prepare renewal email",
-      ownerId: "membership",
-      dueDate: "2026-05-30",
-      priority: "High",
-      status: "In progress",
-      blocker: "",
-      expectedOutcome: "Draft renewal message ready for board review",
-      sourceMeeting: "Prototype seed",
-      createdAt: "2026-05-22",
-      lastReminderAt: "",
-      updates: [
-        {
-          date: "2026-05-22",
-          body: "Initial task added from the project outline."
-        }
-      ]
-    },
-    {
-      id: "task-venue",
-      title: "Confirm annual meeting venue",
-      ownerId: "events",
-      dueDate: "2026-06-15",
-      priority: "Normal",
-      status: "Waiting",
-      blocker: "Budget approval",
-      expectedOutcome: "Venue selected and reservation details shared",
-      sourceMeeting: "Prototype seed",
-      createdAt: "2026-05-22",
-      lastReminderAt: "",
-      updates: []
-    },
-    {
-      id: "task-budget",
-      title: "Review event budget",
-      ownerId: "finance",
-      dueDate: "2026-06-05",
-      priority: "Normal",
-      status: "Not started",
-      blocker: "Awaiting venue quote",
-      expectedOutcome: "Budget recommendation ready for next BOD packet",
-      sourceMeeting: "Prototype seed",
-      createdAt: "2026-05-22",
-      lastReminderAt: "",
-      updates: []
-    }
-  ],
+  tasks: [],
   meetings: [],
   meetingDraftActions: [],
+  motions: [],
   settings: {
-    reminderCadenceDays: 7
+    reminderCadenceDays: 7,
+    rosterVersion: 2
   }
 };
 
+const DIRECTOR_ID_MIGRATIONS = {
+  events: "activities",
+  finance: "treasurer",
+  membership: "secretary",
+  safety: "safety-coordinator"
+};
+
+const DEFAULT_DIRECTOR_PLACEHOLDER_NAMES = new Set([
+  "Activities Director",
+  "Board leadership",
+  "Events Director",
+  "Finance Director",
+  "Membership Director",
+  "President",
+  "Safety Director",
+  "Treasurer",
+  "Vice President"
+]);
+
 let state = loadState();
 let activeView = "dashboard";
+let taskQuickFilter = "all";
 let speechRecognition = null;
 let dictationStopRequested = false;
 let toastTimer = null;
@@ -107,6 +109,7 @@ const els = {
   riskList: document.getElementById("riskList"),
   taskForm: document.getElementById("taskForm"),
   taskOwner: document.getElementById("taskOwner"),
+  taskQuickFilterNotice: document.getElementById("taskQuickFilterNotice"),
   taskTableBody: document.getElementById("taskTableBody"),
   ownerFilter: document.getElementById("ownerFilter"),
   statusFilter: document.getElementById("statusFilter"),
@@ -118,11 +121,14 @@ const els = {
   meetingTranscript: document.getElementById("meetingTranscript"),
   meetingMinutes: document.getElementById("meetingMinutes"),
   micNotice: document.getElementById("micNotice"),
-  speakerSelect: document.getElementById("speakerSelect"),
-  speakerOther: document.getElementById("speakerOther"),
   meetingActionForm: document.getElementById("meetingActionForm"),
   meetingActionOwner: document.getElementById("meetingActionOwner"),
   meetingActionList: document.getElementById("meetingActionList"),
+  motionForm: document.getElementById("motionForm"),
+  motionProposedAt: document.getElementById("motionProposedAt"),
+  motionList: document.getElementById("motionList"),
+  motionStatusFilter: document.getElementById("motionStatusFilter"),
+  motionSearch: document.getElementById("motionSearch"),
   reminderQueue: document.getElementById("reminderQueue"),
   replyForm: document.getElementById("replyForm"),
   replyTaskSelect: document.getElementById("replyTaskSelect"),
@@ -137,6 +143,7 @@ document.addEventListener("DOMContentLoaded", init);
 
 function init() {
   els.meetingDate.value = todayISO();
+  els.motionProposedAt.value = todayISO();
   clearMicNotice();
   bindEvents();
   render();
@@ -151,10 +158,12 @@ function bindEvents() {
     button.addEventListener("click", () => switchView(button.dataset.viewJump));
   });
 
+  els.metricGrid.addEventListener("click", handleDashboardMetricClick);
   els.taskForm.addEventListener("submit", addTaskFromForm);
-  els.ownerFilter.addEventListener("change", renderTasks);
-  els.statusFilter.addEventListener("change", renderTasks);
-  els.taskSearch.addEventListener("input", renderTasks);
+  els.ownerFilter.addEventListener("change", handleTaskFilterChange);
+  els.statusFilter.addEventListener("change", handleTaskFilterChange);
+  els.taskSearch.addEventListener("input", handleTaskFilterChange);
+  els.taskQuickFilterNotice.addEventListener("click", handleTaskQuickFilterNoticeClick);
   els.taskTableBody.addEventListener("change", handleTaskChange);
   els.taskTableBody.addEventListener("click", handleTaskClick);
 
@@ -165,21 +174,26 @@ function bindEvents() {
   document.getElementById("startTranscriptButton").addEventListener("click", startDictation);
   document.getElementById("checkMicButton").addEventListener("click", checkMicrophone);
   document.getElementById("stopTranscriptButton").addEventListener("click", stopDictation);
-  document.getElementById("insertSpeakerButton").addEventListener("click", insertSpeakerTurn);
   els.meetingActionForm.addEventListener("submit", addMeetingActionFromForm);
   els.meetingActionList.addEventListener("click", handleMeetingActionClick);
+
+  els.motionForm.addEventListener("submit", addMotionFromForm);
+  els.motionStatusFilter.addEventListener("change", renderMotions);
+  els.motionSearch.addEventListener("input", renderMotions);
+  els.motionList.addEventListener("submit", handleMotionVote);
+  els.motionList.addEventListener("click", handleMotionClick);
 
   document.getElementById("copyDigestButton").addEventListener("click", () => copyText(buildWeeklyDigest(), "Weekly digest copied."));
   els.reminderQueue.addEventListener("click", handleReminderClick);
   els.replyForm.addEventListener("submit", saveReply);
 
   els.directorForm.addEventListener("submit", addDirectorFromForm);
+  els.directorList.addEventListener("change", handleDirectorChange);
   els.directorList.addEventListener("click", handleDirectorClick);
 
   document.getElementById("copyReportButton").addEventListener("click", () => copyText(buildBoardReport(), "Board report copied."));
   document.getElementById("printReportButton").addEventListener("click", () => window.print());
   document.getElementById("exportDataButton").addEventListener("click", exportData);
-  document.getElementById("resetDemoButton").addEventListener("click", resetDemoData);
   els.importFile.addEventListener("change", importData);
 }
 
@@ -204,14 +218,110 @@ function loadState() {
 
 function normalizeState(nextState) {
   return {
-    directors: Array.isArray(nextState.directors) ? nextState.directors : structuredClone(defaultState.directors),
-    tasks: Array.isArray(nextState.tasks) ? nextState.tasks : [],
+    directors: normalizeDirectors(nextState.directors),
+    tasks: Array.isArray(nextState.tasks) ? nextState.tasks.map(normalizeTask) : [],
     meetings: Array.isArray(nextState.meetings) ? nextState.meetings : [],
     meetingDraftActions: Array.isArray(nextState.meetingDraftActions) ? nextState.meetingDraftActions : [],
+    motions: Array.isArray(nextState.motions) ? nextState.motions.map(normalizeMotion).filter(Boolean) : [],
     settings: {
       ...defaultState.settings,
       ...(nextState.settings || {})
     }
+  };
+}
+
+function normalizeDirectors(directors) {
+  if (!Array.isArray(directors)) {
+    return structuredClone(defaultState.directors);
+  }
+
+  const savedById = new Map();
+  directors.forEach((director) => {
+    if (!director?.id) return;
+    const nextId = migrateDirectorId(director.id);
+    savedById.set(nextId, {
+      ...director,
+      id: nextId
+    });
+  });
+
+  const roster = defaultState.directors.map((defaultDirector) => {
+    const savedDirector = savedById.get(defaultDirector.id);
+    if (!savedDirector) return structuredClone(defaultDirector);
+
+    return {
+      ...defaultDirector,
+      name: normalizeDirectorName(savedDirector.name),
+      email: String(savedDirector.email || "").trim()
+    };
+  });
+
+  directors.forEach((director) => {
+    if (!director?.id) return;
+    const nextId = migrateDirectorId(director.id);
+    const isDefaultDirector = defaultState.directors.some((candidate) => candidate.id === nextId);
+    if (isDefaultDirector) return;
+
+    roster.push({
+      id: nextId,
+      name: normalizeDirectorName(director.name),
+      role: String(director.role || director.name || "Director").trim(),
+      email: String(director.email || "").trim(),
+      area: String(director.area || "").trim()
+    });
+  });
+
+  return roster;
+}
+
+function normalizeDirectorName(name) {
+  const cleanName = String(name || "").trim();
+  if (!cleanName || DEFAULT_DIRECTOR_PLACEHOLDER_NAMES.has(cleanName)) return "";
+  return cleanName;
+}
+
+function normalizeTask(task) {
+  return {
+    ...task,
+    ownerId: migrateDirectorId(task.ownerId)
+  };
+}
+
+function migrateDirectorId(id) {
+  return DIRECTOR_ID_MIGRATIONS[id] || id;
+}
+
+function isDefaultDirectorId(id) {
+  return defaultState.directors.some((director) => director.id === id);
+}
+
+function normalizeMotion(motion) {
+  if (!motion || !String(motion.title || "").trim()) return null;
+
+  return {
+    id: motion.id || makeId("motion"),
+    title: String(motion.title || "").trim(),
+    detail: String(motion.detail || motion.description || "").trim(),
+    proposer: String(motion.proposer || "Member").trim(),
+    proposedAt: motion.proposedAt || motion.createdAt || todayISO(),
+    status: motion.status === "Closed" ? "Closed" : "Open",
+    createdAt: motion.createdAt || motion.proposedAt || todayISO(),
+    closedAt: motion.closedAt || "",
+    votes: Array.isArray(motion.votes) ? motion.votes.map(normalizeMotionVote).filter(Boolean) : []
+  };
+}
+
+function normalizeMotionVote(vote) {
+  const memberName = String(vote?.memberName || vote?.member || "").trim();
+  const choice = String(vote?.choice || vote?.vote || "").toLowerCase();
+
+  if (!memberName || !["yes", "no"].includes(choice)) return null;
+
+  return {
+    id: vote.id || makeId("vote"),
+    memberName,
+    choice,
+    votedAt: vote.votedAt || vote.date || todayISO()
   };
 }
 
@@ -224,6 +334,7 @@ function render() {
   renderDashboard();
   renderTasks();
   renderMeetingActions();
+  renderMotions();
   renderReminders();
   renderDirectors();
   renderReports();
@@ -244,18 +355,18 @@ function switchView(view) {
   if (view === "tasks") {
     document.getElementById("taskTitle").focus();
   }
+  if (view === "motions") {
+    document.getElementById("motionTitle").focus();
+  }
 }
 
 function renderDirectorOptions() {
-  const selectedSpeaker = els.speakerSelect.value || state.directors[0]?.id || "guest";
   const options = state.directors
-    .map((director) => `<option value="${escapeHtml(director.id)}">${escapeHtml(director.name)}</option>`)
+    .map((director) => `<option value="${escapeHtml(director.id)}">${escapeHtml(directorDisplayName(director))}</option>`)
     .join("");
 
   els.taskOwner.innerHTML = options;
   els.meetingActionOwner.innerHTML = options;
-  els.speakerSelect.innerHTML = `${options}<option value="guest">Guest / other</option>`;
-  els.speakerSelect.value = state.directors.some((director) => director.id === selectedSpeaker) ? selectedSpeaker : "guest";
 
   const ownerFilterValue = els.ownerFilter.value || "all";
   els.ownerFilter.innerHTML = `<option value="all">All owners</option>${options}`;
@@ -265,10 +376,11 @@ function renderDirectorOptions() {
 function renderDashboard() {
   const metrics = getMetrics();
   els.metricGrid.innerHTML = [
-    metricCard("Active tasks", metrics.active, "blue"),
-    metricCard("Overdue", metrics.overdue, "red"),
-    metricCard("Blocked", metrics.blocked, "amber"),
-    metricCard("Done", metrics.done, "green")
+    metricCard("Active tasks", metrics.active, "blue", { view: "tasks", taskFilter: "active" }),
+    metricCard("Overdue", metrics.overdue, "red", { view: "tasks", taskFilter: "overdue" }),
+    metricCard("Blocked", metrics.blocked, "amber", { view: "tasks", taskFilter: "blocked" }),
+    metricCard("Done", metrics.done, "green", { view: "tasks", taskFilter: "done" }),
+    metricCard("Open motions", metrics.openMotions, "teal", { view: "motions", motionStatus: "Open" })
   ].join("");
 
   const needsUpdate = getTasksNeedingUpdate().slice(0, 6);
@@ -278,27 +390,47 @@ function renderDashboard() {
   renderList(els.riskList, riskTasks, (task) => taskListItem(task, { includeBlocker: true }));
 }
 
-function metricCard(label, value, tone) {
+function metricCard(label, value, tone, target) {
   return `
-    <article class="metric" data-tone="${tone}">
+    <button class="metric" type="button" data-tone="${tone}" data-dashboard-view="${escapeAttribute(target.view)}" data-task-quick-filter="${escapeAttribute(target.taskFilter || "")}" data-motion-status-filter="${escapeAttribute(target.motionStatus || "")}" aria-label="View ${escapeAttribute(label.toLowerCase())}">
       <span>${escapeHtml(label)}</span>
       <strong>${value}</strong>
-    </article>
+    </button>
   `;
+}
+
+function handleDashboardMetricClick(event) {
+  const metric = event.target.closest("[data-dashboard-view]");
+  if (!metric) return;
+
+  if (metric.dataset.dashboardView === "tasks") {
+    applyTaskQuickFilter(metric.dataset.taskQuickFilter || "all");
+    switchView("tasks");
+    return;
+  }
+
+  if (metric.dataset.dashboardView === "motions") {
+    els.motionStatusFilter.value = metric.dataset.motionStatusFilter || "all";
+    els.motionSearch.value = "";
+    renderMotions();
+    switchView("motions");
+  }
 }
 
 function renderTasks() {
   const ownerFilter = els.ownerFilter.value || "all";
   const statusFilter = els.statusFilter.value || "all";
   const query = (els.taskSearch.value || "").trim().toLowerCase();
+  renderTaskQuickFilterNotice();
 
   const filtered = state.tasks
+    .filter(taskMatchesQuickFilter)
     .filter((task) => ownerFilter === "all" || task.ownerId === ownerFilter)
     .filter((task) => statusFilter === "all" || task.status === statusFilter)
     .filter((task) => {
       if (!query) return true;
       const owner = getDirector(task.ownerId);
-      return [task.title, task.blocker, task.expectedOutcome, owner.name, owner.role]
+      return [task.title, task.blocker, task.expectedOutcome, directorDisplayName(owner), owner.role]
         .join(" ")
         .toLowerCase()
         .includes(query);
@@ -319,6 +451,72 @@ function renderTasks() {
   renderReplyOptions();
 }
 
+function applyTaskQuickFilter(filter) {
+  taskQuickFilter = filter || "all";
+  els.ownerFilter.value = "all";
+  els.statusFilter.value = "all";
+  els.taskSearch.value = "";
+  renderTasks();
+}
+
+function handleTaskFilterChange() {
+  taskQuickFilter = "all";
+  renderTasks();
+}
+
+function handleTaskQuickFilterNoticeClick(event) {
+  if (!event.target.closest("[data-task-filter-clear]")) return;
+  taskQuickFilter = "all";
+  renderTasks();
+}
+
+function renderTaskQuickFilterNotice() {
+  if (taskQuickFilter === "all") {
+    els.taskQuickFilterNotice.hidden = true;
+    els.taskQuickFilterNotice.innerHTML = "";
+    return;
+  }
+
+  els.taskQuickFilterNotice.hidden = false;
+  els.taskQuickFilterNotice.innerHTML = `
+    <span>Showing ${escapeHtml(taskQuickFilterLabel(taskQuickFilter))}</span>
+    <button class="text-button" type="button" data-task-filter-clear>Clear</button>
+  `;
+}
+
+function taskMatchesQuickFilter(task) {
+  if (taskQuickFilter.startsWith("meeting:")) {
+    const meetingId = taskQuickFilter.slice("meeting:".length);
+    return task.sourceMeeting === meetingId || task.lastUpdatedFromMeeting === meetingId;
+  }
+  if (taskQuickFilter === "active") {
+    return task.status !== "Done";
+  }
+  if (taskQuickFilter === "overdue") {
+    return task.status !== "Done" && daysUntil(task.dueDate) < 0;
+  }
+  if (taskQuickFilter === "blocked") {
+    return task.status !== "Done" && Boolean(task.blocker);
+  }
+  if (taskQuickFilter === "done") {
+    return task.status === "Done";
+  }
+  return true;
+}
+
+function taskQuickFilterLabel(filter) {
+  if (filter.startsWith("meeting:")) {
+    return "tasks from the saved meeting";
+  }
+
+  return {
+    active: "active tasks",
+    overdue: "overdue tasks",
+    blocked: "blocked tasks",
+    done: "done tasks"
+  }[filter] || "tasks";
+}
+
 function taskRow(task) {
   const owner = getDirector(task.ownerId);
   const latest = getLatestUpdate(task);
@@ -335,7 +533,7 @@ function taskRow(task) {
         <span>${escapeHtml(task.expectedOutcome || "No expected outcome recorded")}</span>
         <div class="badge-row">${dueBadge}<span class="badge">${escapeHtml(task.priority)}</span></div>
       </td>
-      <td>${escapeHtml(owner.name)}<br><span class="muted">${escapeHtml(owner.role || owner.area || "")}</span></td>
+      <td>${escapeHtml(directorDisplayName(owner))}<br><span class="muted">${escapeHtml(owner.role || owner.area || "")}</span></td>
       <td>${formatDate(task.dueDate)}</td>
       <td>
         <select class="inline-control" data-task-field="status">
@@ -378,7 +576,7 @@ function renderMeetingActions() {
         <div class="list-item-header">
           <div class="list-item-title">
             ${escapeHtml(action.title)}
-            <span>${escapeHtml(owner.name)} due ${formatDate(action.dueDate)}</span>
+            <span>${escapeHtml(directorDisplayName(owner))} due ${formatDate(action.dueDate)}</span>
           </div>
           <div class="badge-row">${modeBadge}${statusBadge}${blockerBadge}${ruleBadge}${inferredDueBadge}</div>
         </div>
@@ -396,6 +594,118 @@ function renderMeetingActions() {
   }, "No meeting actions drafted yet.");
 }
 
+function renderMotions() {
+  const statusFilter = els.motionStatusFilter.value || "all";
+  const query = (els.motionSearch.value || "").trim().toLowerCase();
+
+  const motions = state.motions
+    .filter((motion) => statusFilter === "all" || motion.status === statusFilter)
+    .filter((motion) => {
+      if (!query) return true;
+      const voteNames = motion.votes.map((vote) => vote.memberName).join(" ");
+      return [motion.title, motion.detail, motion.proposer, voteNames, motionResultText(motion)]
+        .join(" ")
+        .toLowerCase()
+        .includes(query);
+    })
+    .sort(sortMotions);
+
+  renderList(els.motionList, motions, motionCard, "No motions match the current filters.");
+}
+
+function motionCard(motion) {
+  const tally = getMotionTally(motion);
+  const resultText = motionResultText(motion);
+  const resultTone = motionResultTone(motion);
+  const detail = motion.detail ? `<p class="small-text">${escapeHtml(motion.detail)}</p>` : "";
+  const closeLabel = motion.status === "Open" ? "Close voting" : "Reopen voting";
+  const voteForm = motion.status === "Open" ? motionVoteForm(motion) : '<p class="small-text muted">Voting is closed. Reopen voting to record another member vote.</p>';
+  const voteRoster = motion.votes.length ? motionVoteRoster(motion) : '<p class="small-text muted">No votes recorded yet.</p>';
+
+  return `
+    <article class="motion-card" data-motion-id="${escapeHtml(motion.id)}">
+      <div class="list-item-header">
+        <div class="list-item-title">
+          ${escapeHtml(motion.title)}
+          <span>Proposed by ${escapeHtml(motion.proposer)} on ${formatDate(motion.proposedAt)}</span>
+        </div>
+        <div class="badge-row">
+          <span class="badge ${motion.status === "Open" ? "blue" : ""}">${escapeHtml(motion.status)}</span>
+          <span class="badge ${resultTone}">${escapeHtml(resultText)}</span>
+        </div>
+      </div>
+      ${detail}
+      <div class="motion-tally" aria-label="Vote tally">
+        <div>
+          <span>Yes</span>
+          <strong>${tally.yes}</strong>
+        </div>
+        <div>
+          <span>No</span>
+          <strong>${tally.no}</strong>
+        </div>
+        <div>
+          <span>Total</span>
+          <strong>${tally.total}</strong>
+        </div>
+        <div>
+          <span>Result</span>
+          <strong>${escapeHtml(resultText)}</strong>
+        </div>
+      </div>
+      ${voteForm}
+      <div class="vote-roster" aria-label="Recorded votes">
+        ${voteRoster}
+      </div>
+      <div class="button-row action-review-row">
+        <button class="ghost-button compact-button" type="button" data-motion-action="toggle-status">${closeLabel}</button>
+        <button class="icon-button" type="button" title="Delete motion" data-motion-action="delete">
+          <svg viewBox="0 0 24 24"><path d="M9 3h6l1 2h4v2H4V5h4l1-2Zm-2 6h10l-.8 12H7.8L7 9Z"></path></svg>
+        </button>
+      </div>
+    </article>
+  `;
+}
+
+function motionVoteForm(motion) {
+  const radioName = `motion-choice-${motion.id}`;
+  return `
+    <form class="motion-vote-form" data-motion-vote>
+      <label>
+        Member
+        <input name="memberName" type="text" placeholder="Member name" required>
+      </label>
+      <div class="segmented-control" aria-label="Vote choice">
+        <label>
+          <input type="radio" name="${escapeAttribute(radioName)}" value="yes" checked>
+          <span>Yes</span>
+        </label>
+        <label>
+          <input type="radio" name="${escapeAttribute(radioName)}" value="no">
+          <span>No</span>
+        </label>
+      </div>
+      <button class="secondary-button" type="submit">Record vote</button>
+    </form>
+  `;
+}
+
+function motionVoteRoster(motion) {
+  return motion.votes
+    .slice()
+    .sort((a, b) => a.memberName.localeCompare(b.memberName))
+    .map((vote) => `
+      <span class="vote-pill" data-choice="${escapeHtml(vote.choice)}">
+        ${escapeHtml(vote.memberName)}
+        <strong>${vote.choice === "yes" ? "Yes" : "No"}</strong>
+        <button class="vote-remove-button" type="button" title="Remove vote" data-vote-action="delete" data-vote-id="${escapeHtml(vote.id)}">
+          <svg viewBox="0 0 24 24"><path d="m6.4 5 5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6l5.6-5.6L5 6.4 6.4 5Z"></path></svg>
+        </button>
+      </span>
+    `)
+    .join("");
+}
+
 function renderReminders() {
   const tasks = getTasksNeedingUpdate();
   renderList(els.reminderQueue, tasks, (task) => {
@@ -405,7 +715,7 @@ function renderReminders() {
       <article class="list-item" data-task-id="${escapeHtml(task.id)}">
         <div class="list-item-header">
           <div class="list-item-title">
-            ${escapeHtml(owner.name)}
+            ${escapeHtml(directorDisplayName(owner))}
             <span>${escapeHtml(task.title)} due ${formatDate(task.dueDate)}</span>
           </div>
           ${dueStatusBadge(task)}
@@ -425,7 +735,7 @@ function renderReminders() {
 function renderReplyOptions() {
   const activeTasks = state.tasks.filter((task) => task.status !== "Done").sort(sortTasks);
   els.replyTaskSelect.innerHTML = activeTasks.length
-    ? activeTasks.map((task) => `<option value="${escapeHtml(task.id)}">${escapeHtml(getDirector(task.ownerId).name)}: ${escapeHtml(task.title)}</option>`).join("")
+    ? activeTasks.map((task) => `<option value="${escapeHtml(task.id)}">${escapeHtml(directorDisplayName(getDirector(task.ownerId)))}: ${escapeHtml(task.title)}</option>`).join("")
     : '<option value="">No active tasks</option>';
 }
 
@@ -441,21 +751,53 @@ function renderDirectors() {
       <article class="director-card" data-director-id="${escapeHtml(director.id)}">
         <div class="list-item-header">
           <div>
-            <h4>${escapeHtml(director.name)}</h4>
-            <p class="muted">${escapeHtml(director.role || "No role listed")}</p>
+            <h4>${escapeHtml(director.role || director.name || "Director")}</h4>
+            <p class="muted">${director.name ? escapeHtml(director.name) : "No name assigned"}</p>
           </div>
           <span class="badge ${taskCount ? "blue" : ""}">${taskCount} active</span>
         </div>
+        <div class="director-edit-grid">
+          <label>
+            Name
+            <input data-director-field="name" type="text" value="${escapeAttribute(director.name || "")}" placeholder="Director name">
+          </label>
+          <label>
+            Email
+            <input data-director-field="email" type="email" value="${escapeAttribute(director.email || "")}" placeholder="name@example.org">
+          </label>
+        </div>
         <dl>
-          <dt>Email</dt>
-          <dd>${director.email ? escapeHtml(director.email) : '<span class="muted">Not set</span>'}</dd>
           <dt>Responsibility</dt>
-          <dd>${escapeHtml(director.area || "Not set")}</dd>
+          <dd>${formatResponsibilityList(director.area)}</dd>
         </dl>
-        <button class="ghost-button" type="button" data-director-action="delete">Remove director</button>
+        ${isDefaultDirectorId(director.id) ? "" : '<button class="ghost-button" type="button" data-director-action="delete">Remove director</button>'}
       </article>
     `;
   }).join("");
+}
+
+function formatResponsibilityList(value) {
+  const items = splitResponsibilities(value);
+  if (!items.length) return '<span class="muted">Not set</span>';
+
+  return `
+    <ul class="responsibility-list">
+      ${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+    </ul>
+  `;
+}
+
+function splitResponsibilities(value) {
+  return String(value || "")
+    .split(/\s*;\s*/)
+    .map(capitalizeResponsibility)
+    .filter(Boolean);
+}
+
+function capitalizeResponsibility(item) {
+  const cleanItem = item.trim();
+  if (!cleanItem) return "";
+  return cleanItem.charAt(0).toUpperCase() + cleanItem.slice(1);
 }
 
 function renderReports() {
@@ -584,6 +926,112 @@ function handleMeetingActionClick(event) {
 
   saveState();
   renderMeetingActions();
+}
+
+function addMotionFromForm(event) {
+  event.preventDefault();
+  const form = new FormData(els.motionForm);
+  const title = form.get("title").trim();
+  const proposer = form.get("proposer").trim();
+
+  if (!title || !proposer) return;
+
+  state.motions.push({
+    id: makeId("motion"),
+    title,
+    detail: form.get("detail").trim(),
+    proposer,
+    proposedAt: form.get("proposedAt") || todayISO(),
+    status: "Open",
+    createdAt: todayISO(),
+    closedAt: "",
+    votes: []
+  });
+
+  saveState();
+  els.motionForm.reset();
+  els.motionProposedAt.value = todayISO();
+  render();
+  showToast("Motion created.");
+}
+
+function handleMotionVote(event) {
+  const form = event.target.closest("[data-motion-vote]");
+  if (!form) return;
+  event.preventDefault();
+
+  const card = form.closest("[data-motion-id]");
+  const motion = state.motions.find((candidate) => candidate.id === card.dataset.motionId);
+  if (!motion) return;
+
+  if (motion.status !== "Open") {
+    showToast("Voting is closed for that motion.");
+    return;
+  }
+
+  const memberName = form.elements.memberName.value.trim();
+  const selectedVote = form.querySelector("input[type='radio']:checked");
+  const choice = selectedVote?.value;
+
+  if (!memberName || !["yes", "no"].includes(choice)) {
+    showToast("Member name and yes/no vote are required.");
+    return;
+  }
+
+  const normalizedMemberName = normalizeVoteMemberName(memberName);
+  const existingVote = motion.votes.find((vote) => normalizeVoteMemberName(vote.memberName) === normalizedMemberName);
+
+  if (existingVote) {
+    existingVote.memberName = memberName;
+    existingVote.choice = choice;
+    existingVote.votedAt = todayISO();
+  } else {
+    motion.votes.push({
+      id: makeId("vote"),
+      memberName,
+      choice,
+      votedAt: todayISO()
+    });
+  }
+
+  saveState();
+  render();
+  showToast(existingVote ? "Vote updated." : "Vote recorded.");
+}
+
+function handleMotionClick(event) {
+  const voteButton = event.target.closest("[data-vote-action]");
+  const motionButton = event.target.closest("[data-motion-action]");
+  if (!voteButton && !motionButton) return;
+
+  const card = event.target.closest("[data-motion-id]");
+  const motion = state.motions.find((candidate) => candidate.id === card.dataset.motionId);
+  if (!motion) return;
+
+  if (voteButton?.dataset.voteAction === "delete") {
+    motion.votes = motion.votes.filter((vote) => vote.id !== voteButton.dataset.voteId);
+    saveState();
+    render();
+    showToast("Vote removed.");
+    return;
+  }
+
+  if (motionButton?.dataset.motionAction === "toggle-status") {
+    motion.status = motion.status === "Open" ? "Closed" : "Open";
+    motion.closedAt = motion.status === "Closed" ? todayISO() : "";
+    saveState();
+    render();
+    showToast(motion.status === "Closed" ? `Motion closed: ${motionResultText(motion)}.` : "Motion reopened.");
+    return;
+  }
+
+  if (motionButton?.dataset.motionAction === "delete") {
+    if (!confirm(`Delete motion "${motion.title}"?`)) return;
+    state.motions = state.motions.filter((candidate) => candidate.id !== motion.id);
+    saveState();
+    render();
+    showToast("Motion deleted.");
+  }
 }
 
 function extractActionsFromTranscript() {
@@ -1005,7 +1453,7 @@ function draftMinutes() {
     const inferred = action.inferredDueDate ? " | Due date inferred" : "";
     const targetTask = getMeetingActionTarget(action);
     const target = targetTask ? ` | Updates: ${targetTask.title}${meetingActionChangeSummary(action, targetTask)}` : " | Creates new task";
-    return `- ${action.title} | Owner: ${owner.name} | Due: ${formatDate(action.dueDate)}${target}${inferred}`;
+    return `- ${action.title} | Owner: ${directorDisplayName(owner)} | Due: ${formatDate(action.dueDate)}${target}${inferred}`;
   });
 
   const minutes = [
@@ -1071,8 +1519,10 @@ function saveMeeting() {
   });
 
   state.meetingDraftActions = [];
+  taskQuickFilter = `meeting:${meetingId}`;
   saveState();
   render();
+  switchView("tasks");
   showToast(meetingSaveMessage(createdCount, updatedCount));
 }
 
@@ -1267,23 +1717,10 @@ function meetingActionText(action) {
   return [action.title, action.sourceLine, action.expectedOutcome].filter(Boolean).join(" ");
 }
 
-function insertSpeakerTurn() {
-  els.meetingTranscript.value = appendTranscriptLine(els.meetingTranscript.value, `${currentSpeakerName()}:`);
-  els.meetingTranscript.focus();
-}
-
-function currentSpeakerName() {
-  if (els.speakerSelect.value === "guest") {
-    return els.speakerOther.value.trim() || "Guest";
-  }
-
-  return getDirector(els.speakerSelect.value).name;
-}
-
-function formatSpeakerLine(text) {
+function formatTranscriptLine(text) {
   const cleanText = text.trim();
   if (!cleanText) return "";
-  return `${currentSpeakerName()}: ${cleanSentence(cleanText)}`;
+  return cleanSentence(cleanText);
 }
 
 function appendTranscriptLine(baseText, line) {
@@ -1323,9 +1760,9 @@ async function startDictation() {
     for (let index = event.resultIndex; index < event.results.length; index += 1) {
       const transcript = event.results[index][0].transcript.trim();
       if (event.results[index].isFinal) {
-        committedText = appendTranscriptLine(committedText, formatSpeakerLine(transcript));
+        committedText = appendTranscriptLine(committedText, formatTranscriptLine(transcript));
       } else {
-        interim = formatSpeakerLine(transcript);
+        interim = formatTranscriptLine(transcript);
       }
     }
     els.meetingTranscript.value = appendTranscriptLine(committedText, interim);
@@ -1467,6 +1904,20 @@ function addDirectorFromForm(event) {
   showToast("Director added.");
 }
 
+function handleDirectorChange(event) {
+  const field = event.target.dataset.directorField;
+  if (!["name", "email"].includes(field)) return;
+
+  const card = event.target.closest("[data-director-id]");
+  const director = state.directors.find((candidate) => candidate.id === card.dataset.directorId);
+  if (!director) return;
+
+  director[field] = event.target.value.trim();
+  saveState();
+  render();
+  showToast("Director updated.");
+}
+
 function handleDirectorClick(event) {
   const button = event.target.closest("[data-director-action]");
   if (!button) return;
@@ -1494,7 +1945,7 @@ function buildReminder(task) {
   const latestText = latest ? ` Latest recorded update: ${latest.body}` : "";
   const blocker = task.blocker ? ` Current blocker: ${task.blocker}.` : "";
   const body = [
-    `Hi ${owner.name},`,
+    `Hi ${directorShortName(owner)},`,
     "",
     `Please send a short status update for this SBSA task before the weekly check-in:`,
     "",
@@ -1527,9 +1978,9 @@ function buildWeeklyDigest() {
 function buildBoardReport() {
   const metrics = getMetrics();
   const activeTasks = state.tasks.filter((task) => task.status !== "Done").sort(sortTasks);
-  const grouped = groupBy(activeTasks, (task) => getDirector(task.ownerId).name);
+  const grouped = groupBy(activeTasks, (task) => directorDisplayName(getDirector(task.ownerId)));
   const lines = [
-    "SBSA AIMS Board Action Report",
+    "SBSA Board Action Report",
     `Generated: ${formatDate(todayISO())}`,
     "",
     "Summary",
@@ -1537,6 +1988,8 @@ function buildBoardReport() {
     `- Overdue tasks: ${metrics.overdue}`,
     `- Blocked tasks: ${metrics.blocked}`,
     `- Completed tasks: ${metrics.done}`,
+    `- Open motions: ${metrics.openMotions}`,
+    `- Passed motions: ${metrics.passedMotions}`,
     "",
     "Director Workload"
   ];
@@ -1553,6 +2006,16 @@ function buildBoardReport() {
 
   if (!activeTasks.length) {
     lines.push("- No active tasks.");
+  }
+
+  lines.push("", "Motions");
+  state.motions.slice().sort(sortMotions).slice(0, 10).forEach((motion) => {
+    const tally = getMotionTally(motion);
+    lines.push(`- ${motion.title} | ${motion.status} | Result: ${motionResultText(motion)} | Yes: ${tally.yes} | No: ${tally.no} | Proposed by: ${motion.proposer} on ${formatDate(motion.proposedAt)}`);
+  });
+
+  if (!state.motions.length) {
+    lines.push("- No motions recorded yet.");
   }
 
   lines.push("", "Recent Meetings");
@@ -1572,7 +2035,7 @@ function exportData() {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `sbsa-aims-export-${todayISO()}.json`;
+  link.download = `sbsa-board-action-export-${todayISO()}.json`;
   link.click();
   URL.revokeObjectURL(url);
 }
@@ -1590,7 +2053,7 @@ function importData(event) {
       showToast("Data imported.");
     } catch (error) {
       console.warn(error);
-      showToast("Import failed. Use a valid SBSA AIMS JSON export.");
+      showToast("Import failed. Use a valid SBSA board action JSON export.");
     } finally {
       event.target.value = "";
     }
@@ -1598,20 +2061,14 @@ function importData(event) {
   reader.readAsText(file);
 }
 
-function resetDemoData() {
-  if (!confirm("Reset local data to the starter demo?")) return;
-  state = structuredClone(defaultState);
-  saveState();
-  render();
-  showToast("Demo data restored.");
-}
-
 function getMetrics() {
   const active = state.tasks.filter((task) => task.status !== "Done").length;
   const done = state.tasks.filter((task) => task.status === "Done").length;
   const overdue = state.tasks.filter((task) => task.status !== "Done" && daysUntil(task.dueDate) < 0).length;
   const blocked = state.tasks.filter((task) => task.status !== "Done" && task.blocker).length;
-  return { active, done, overdue, blocked };
+  const openMotions = state.motions.filter((motion) => motion.status === "Open").length;
+  const passedMotions = state.motions.filter((motion) => motion.status === "Closed" && motionResultText(motion) === "Passed").length;
+  return { active, done, overdue, blocked, openMotions, passedMotions };
 }
 
 function getTasksNeedingUpdate() {
@@ -1642,13 +2099,45 @@ function taskListItem(task, options = {}) {
       <div class="list-item-header">
         <div class="list-item-title">
           ${escapeHtml(task.title)}
-          <span>${escapeHtml(owner.name)} due ${formatDate(task.dueDate)}</span>
+          <span>${escapeHtml(directorDisplayName(owner))} due ${formatDate(task.dueDate)}</span>
         </div>
         <div class="badge-row">${dueStatusBadge(task)}${blocker}${reminder}</div>
       </div>
       <p class="small-text">${latest ? escapeHtml(latest.body) : "No update recorded yet."}</p>
     </article>
   `;
+}
+
+function getMotionTally(motion) {
+  const yes = motion.votes.filter((vote) => vote.choice === "yes").length;
+  const no = motion.votes.filter((vote) => vote.choice === "no").length;
+  return {
+    yes,
+    no,
+    total: yes + no
+  };
+}
+
+function motionResultText(motion) {
+  const tally = getMotionTally(motion);
+  if (!tally.total) {
+    return motion.status === "Closed" ? "No votes" : "Awaiting votes";
+  }
+  if (tally.yes === tally.no) {
+    return motion.status === "Closed" ? "Tie - failed" : "Tied";
+  }
+  if (tally.yes > tally.no) {
+    return motion.status === "Closed" ? "Passed" : "Passing";
+  }
+  return motion.status === "Closed" ? "Failed" : "Not passing";
+}
+
+function motionResultTone(motion) {
+  const result = motionResultText(motion);
+  if (["Passed", "Passing"].includes(result)) return "green";
+  if (["Failed", "Tie - failed", "Not passing"].includes(result)) return "red";
+  if (result === "Tied") return "amber";
+  return "";
 }
 
 function dueStatusBadge(task) {
@@ -1681,12 +2170,24 @@ function getDirector(id) {
   };
 }
 
+function directorDisplayName(director) {
+  const name = String(director.name || "").trim();
+  const role = String(director.role || "").trim();
+  if (name && role) return `${name} (${role})`;
+  return name || role || "Unassigned";
+}
+
+function directorShortName(director) {
+  return String(director.name || "").trim() || String(director.role || "").trim() || "Unassigned";
+}
+
 function findDirectorByText(text) {
   const normalized = normalizeLookupText(text);
+  if (!normalized) return null;
   return state.directors.find((director) => {
     const directorText = normalizeLookupText([director.name, director.role, director.area].join(" "));
     const directorName = normalizeLookupText(director.name);
-    return directorText.includes(normalized) || normalized.includes(directorName);
+    return directorText.includes(normalized) || Boolean(directorName && normalized.includes(directorName));
   });
 }
 
@@ -1698,6 +2199,14 @@ function normalizeLookupText(text) {
     .filter(Boolean)
     .map(normalizeLookupWord)
     .join(" ");
+}
+
+function normalizeVoteMemberName(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function normalizeLookupWord(word) {
@@ -1722,6 +2231,15 @@ function sortTasks(a, b) {
   const dueCompare = a.dueDate.localeCompare(b.dueDate);
   if (dueCompare !== 0) return dueCompare;
   return priorityRank(a.priority) - priorityRank(b.priority);
+}
+
+function sortMotions(a, b) {
+  if (a.status !== b.status) {
+    return a.status === "Open" ? -1 : 1;
+  }
+  const dateCompare = b.proposedAt.localeCompare(a.proposedAt);
+  if (dateCompare !== 0) return dateCompare;
+  return b.createdAt.localeCompare(a.createdAt);
 }
 
 function priorityRank(priority) {

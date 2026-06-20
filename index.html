@@ -6,20 +6,18 @@
     <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>SBSA AIMS Board Action Tracker</title>
-    <link rel="stylesheet" href="styles.css?v=20260618-task-updates">
+    <title>SBSA Board Action Tracker</title>
+    <link rel="stylesheet" href="styles.css?v=20260619-logo">
   </head>
   <body>
     <div class="app-shell">
       <aside class="sidebar" aria-label="Primary">
         <div class="brand">
           <div class="brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24" role="img">
-              <path d="M4 17.2 9.8 5.5l3.4 6.6 2.1-3.9L20 17.2h-3.2l-1.5-3-1.9 3H4Z"></path>
-            </svg>
+            <img src="Assets/sbsa-logo.webp" alt="">
           </div>
           <div>
-            <h1>SBSA AIMS</h1>
+            <h1>SBSA</h1>
             <p>Board Action Tracker</p>
           </div>
         </div>
@@ -43,6 +41,12 @@
             </span>
             Meeting
           </button>
+          <button class="nav-button" type="button" data-view="motions">
+            <span class="button-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M5 3h14v18H5V3Zm3 4h8V5H8v2Zm0 4h5V9H8v2Zm7.7 1.3 1.4 1.4-4.6 4.6-2.6-2.6 1.4-1.4 1.2 1.2 3.2-3.2Z"></path></svg>
+            </span>
+            Motions
+          </button>
           <button class="nav-button" type="button" data-view="reminders">
             <span class="button-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24"><path d="M12 22a2.8 2.8 0 0 0 2.6-1.8H9.4A2.8 2.8 0 0 0 12 22Zm7-6V11a7 7 0 0 0-5-6.7V3a2 2 0 1 0-4 0v1.3A7 7 0 0 0 5 11v5l-2 2v1h18v-1l-2-2Z"></path></svg>
@@ -63,36 +67,12 @@
           </button>
         </nav>
 
-        <div class="sidebar-footer">
-          <button class="ghost-button full-width" type="button" id="resetDemoButton">
-            <span class="button-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path d="M12 5V2L7 7l5 5V9a5 5 0 1 1-4.6 7H5.3A7 7 0 1 0 12 5Z"></path></svg>
-            </span>
-            Reset demo data
-          </button>
-        </div>
       </aside>
 
       <main class="main-panel">
         <header class="topbar">
           <div>
-            <p class="eyebrow">Monthly board cycle</p>
             <h2 id="viewTitle">Dashboard</h2>
-          </div>
-          <div class="topbar-actions">
-            <label class="file-button" for="importFile">
-              <span class="button-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><path d="M11 4h2v9l3.5-3.5 1.4 1.4L12 16.8l-5.9-5.9 1.4-1.4L11 13V4ZM5 18h14v2H5v-2Z"></path></svg>
-              </span>
-              Import
-            </label>
-            <input class="sr-only" id="importFile" type="file" accept="application/json">
-            <button class="secondary-button" type="button" id="exportDataButton">
-              <span class="button-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><path d="M11 4h2v9l3.5-3.5 1.4 1.4L12 16.8l-5.9-5.9 1.4-1.4L11 13V4ZM5 20v-2h14v2H5Z"></path></svg>
-              </span>
-              Export
-            </button>
           </div>
         </header>
 
@@ -131,13 +111,7 @@
           </div>
         </section>
 
-        <section class="view" id="tasksView" aria-labelledby="tasksHeading">
-          <div class="section-heading">
-            <div>
-              <h3 id="tasksHeading">Task board</h3>
-              <p>One owner, one due date, one current status for every action item.</p>
-            </div>
-          </div>
+        <section class="view" id="tasksView" aria-label="Tasks">
 
           <form class="form-grid compact-form" id="taskForm">
             <label>
@@ -194,6 +168,7 @@
               <input id="taskSearch" type="search" placeholder="Task, blocker, owner">
             </label>
           </div>
+          <div class="quick-filter-notice" id="taskQuickFilterNotice" hidden></div>
 
           <div class="table-wrap">
             <table class="data-table">
@@ -265,23 +240,7 @@
               </label>
               <div class="field-group">
                 <span class="field-label">Transcript or notes</span>
-                <div class="speaker-controls">
-                  <label>
-                    Current speaker
-                    <select id="speakerSelect"></select>
-                  </label>
-                  <label>
-                    Guest speaker
-                    <input id="speakerOther" type="text" placeholder="Guest or member name">
-                  </label>
-                  <button class="ghost-button" type="button" id="insertSpeakerButton">
-                    <span class="button-icon" aria-hidden="true">
-                      <svg viewBox="0 0 24 24"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0 2c-4.4 0-8 2-8 4.5V20h16v-1.5C20 16 16.4 14 12 14Z"></path></svg>
-                    </span>
-                    Insert speaker
-                  </button>
-                </div>
-                <textarea id="meetingTranscript" rows="12" aria-label="Transcript or notes" placeholder="Speak using dictation, paste a transcript, or type meeting notes here. Examples: President: I will reach out to Friends of Toro to set up a meeting by June 25. Action: Membership Director - send renewal email due 2026-06-15."></textarea>
+                <textarea id="meetingTranscript" rows="12" aria-label="Transcript or notes" placeholder="Speak using dictation, paste a transcript, or type meeting notes here. Examples: President: I will reach out to Friends of Toro to set up a meeting by June 25. Action: Secretary - send renewal email due 2026-06-15."></textarea>
               </div>
               <div class="button-row">
                 <button class="secondary-button" type="button" id="extractActionsButton">
@@ -339,6 +298,51 @@
               </div>
             </section>
           </div>
+        </section>
+
+        <section class="view" id="motionsView" aria-label="Motions">
+
+          <form class="form-grid compact-form motion-form" id="motionForm">
+            <label>
+              Motion
+              <input id="motionTitle" name="title" type="text" placeholder="Approve annual meeting venue budget" required>
+            </label>
+            <label>
+              Proposed by
+              <input id="motionProposer" name="proposer" type="text" placeholder="Member name" required>
+            </label>
+            <label>
+              Proposed date
+              <input id="motionProposedAt" name="proposedAt" type="date" required>
+            </label>
+            <label class="wide-field">
+              Details
+              <input id="motionDetail" name="detail" type="text" placeholder="Optional motion language or context">
+            </label>
+            <button class="primary-button form-submit" type="submit">
+              <span class="button-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5Z"></path></svg>
+              </span>
+              Create motion
+            </button>
+          </form>
+
+          <div class="filter-row">
+            <label>
+              Status
+              <select id="motionStatusFilter">
+                <option value="all">All motions</option>
+                <option>Open</option>
+                <option>Closed</option>
+              </select>
+            </label>
+            <label>
+              Search
+              <input id="motionSearch" type="search" placeholder="Motion, proposer, member">
+            </label>
+          </div>
+
+          <div id="motionList" class="motion-list"></div>
         </section>
 
         <section class="view" id="remindersView" aria-labelledby="remindersHeading">
@@ -400,7 +404,7 @@
           <div class="section-heading">
             <div>
               <h3 id="directorsHeading">Director roster</h3>
-              <p>Keep owners explicit so no task lives in a committee fog.</p>
+              <p>Board roles and responsibilities from the BOD responsibilities document. Names and emails can be edited below.</p>
             </div>
           </div>
 
@@ -436,6 +440,19 @@
             <div class="button-row">
               <button class="secondary-button" type="button" id="copyReportButton">Copy report</button>
               <button class="ghost-button" type="button" id="printReportButton">Print</button>
+              <label class="file-button" for="importFile">
+                <span class="button-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M11 4h2v9l3.5-3.5 1.4 1.4L12 16.8l-5.9-5.9 1.4-1.4L11 13V4ZM5 18h14v2H5v-2Z"></path></svg>
+                </span>
+                Import
+              </label>
+              <input class="sr-only" id="importFile" type="file" accept="application/json">
+              <button class="secondary-button" type="button" id="exportDataButton">
+                <span class="button-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M11 4h2v9l3.5-3.5 1.4 1.4L12 16.8l-5.9-5.9 1.4-1.4L11 13V4ZM5 20v-2h14v2H5Z"></path></svg>
+                </span>
+                Export
+              </button>
             </div>
           </div>
 
@@ -455,6 +472,6 @@
       </div>
     </template>
 
-    <script src="app.js?v=20260618-task-updates"></script>
+    <script src="app.js?v=20260619-motions"></script>
   </body>
 </html>
