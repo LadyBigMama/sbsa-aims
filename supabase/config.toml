@@ -1,0 +1,2 @@
+[functions.transcribe-meeting]
+verify_jwt = false

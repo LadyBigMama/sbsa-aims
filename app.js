@@ -102,6 +102,11 @@ let activeView = "dashboard";
 let taskQuickFilter = "all";
 let speechRecognition = null;
 let dictationStopRequested = false;
+let mediaRecorder = null;
+let recordingStream = null;
+let recordingChunks = [];
+let recordedAudioBlob = null;
+let recordingStartedAt = 0;
 let toastTimer = null;
 let cloudLastUpdatedAt = "";
 let cloudSaveTimer = null;
@@ -131,6 +136,9 @@ const els = {
   meetingTranscript: document.getElementById("meetingTranscript"),
   meetingMinutes: document.getElementById("meetingMinutes"),
   micNotice: document.getElementById("micNotice"),
+  startRecordingButton: document.getElementById("startRecordingButton"),
+  stopRecordingButton: document.getElementById("stopRecordingButton"),
+  transcribeRecordingButton: document.getElementById("transcribeRecordingButton"),
   meetingActionForm: document.getElementById("meetingActionForm"),
   meetingActionOwner: document.getElementById("meetingActionOwner"),
   meetingActionList: document.getElementById("meetingActionList"),
@@ -184,6 +192,9 @@ function bindEvents() {
   document.getElementById("draftMinutesButton").addEventListener("click", draftMinutes);
   document.getElementById("saveMeetingButton").addEventListener("click", saveMeeting);
   document.getElementById("copyMinutesButton").addEventListener("click", () => copyText(els.meetingMinutes.value, "Minutes copied."));
+  els.startRecordingButton.addEventListener("click", startAudioRecording);
+  els.stopRecordingButton.addEventListener("click", stopAudioRecording);
+  els.transcribeRecordingButton.addEventListener("click", transcribeRecordedAudio);
   document.getElementById("startTranscriptButton").addEventListener("click", startDictation);
   document.getElementById("checkMicButton").addEventListener("click", checkMicrophone);
   document.getElementById("stopTranscriptButton").addEventListener("click", stopDictation);
@@ -375,6 +386,7 @@ function getCloudConfig() {
     url,
     anonKey,
     boardId: String(CLOUD_CONFIG.boardId || "sbsa").trim() || "sbsa",
+    transcriptionFunction: String(CLOUD_CONFIG.transcriptionFunction || "transcribe-meeting").trim() || "transcribe-meeting",
     pollMs: Math.max(5000, pollMs)
   };
 }
@@ -1996,6 +2008,174 @@ function appendTranscriptLine(baseText, line) {
   return cleanBase ? `${cleanBase}\n${cleanLine}` : cleanLine;
 }
 
+function appendTranscriptBlock(baseText, block) {
+  const cleanBase = (baseText || "").trim();
+  const cleanBlock = (block || "").trim();
+  if (!cleanBlock) return cleanBase;
+  return cleanBase ? `${cleanBase}\n\n${cleanBlock}` : cleanBlock;
+}
+
+async function startAudioRecording() {
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+    showMicNotice("Audio recording is not supported in this browser.", "Open the online page in Chrome, Edge, or Safari, or paste a transcript into the notes box.");
+    return;
+  }
+
+  if (speechRecognition) {
+    stopDictation();
+  }
+
+  try {
+    recordingStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      }
+    });
+  } catch (error) {
+    console.warn(error);
+    showMicNotice("Microphone permission was not allowed.", "Allow microphone access for this browser, reload the page, and try again.");
+    return;
+  }
+
+  const mimeType = getSupportedRecordingMimeType();
+  recordedAudioBlob = null;
+  recordingChunks = [];
+  recordingStartedAt = Date.now();
+  mediaRecorder = mimeType ? new MediaRecorder(recordingStream, { mimeType }) : new MediaRecorder(recordingStream);
+
+  mediaRecorder.addEventListener("dataavailable", (event) => {
+    if (event.data?.size) {
+      recordingChunks.push(event.data);
+    }
+  });
+
+  mediaRecorder.addEventListener("stop", () => {
+    const audioType = mediaRecorder.mimeType || mimeType || "audio/webm";
+    recordedAudioBlob = new Blob(recordingChunks, { type: audioType });
+    stopRecordingStream();
+    setRecordingButtons("ready");
+    const seconds = Math.max(1, Math.round((Date.now() - recordingStartedAt) / 1000));
+    showMicNotice("Recording ready.", `Recorded ${formatDuration(seconds)}. Click Transcribe when ready.`);
+  }, { once: true });
+
+  mediaRecorder.start();
+  setRecordingButtons("recording");
+  clearMicNotice();
+  showToast("Recording started.");
+}
+
+function stopAudioRecording() {
+  if (mediaRecorder && mediaRecorder.state !== "inactive") {
+    mediaRecorder.stop();
+  } else {
+    stopRecordingStream();
+    setRecordingButtons(recordedAudioBlob ? "ready" : "idle");
+  }
+}
+
+async function transcribeRecordedAudio() {
+  if (!recordedAudioBlob?.size) {
+    showToast("Record audio before transcribing.");
+    return;
+  }
+
+  const config = getCloudConfig();
+  if (!config.enabled) {
+    showMicNotice("Supabase is not configured.", "Enable Supabase sync before using cloud transcription.");
+    return;
+  }
+
+  setRecordingButtons("transcribing");
+  showMicNotice("Transcribing audio...", "Keep this page open while the meeting audio is processed.");
+
+  try {
+    const body = new FormData();
+    body.append("audio", recordedAudioBlob, getRecordingFilename(recordedAudioBlob.type));
+    body.append("meetingTitle", els.meetingTitle.value.trim());
+    body.append("attendees", els.meetingAttendees.value.trim());
+    body.append("speakerNames", JSON.stringify(getTranscriptSpeakerNames()));
+
+    const response = await fetch(`${config.url}/functions/v1/${encodeURIComponent(config.transcriptionFunction)}`, {
+      method: "POST",
+      headers: {
+        apikey: config.anonKey,
+        Authorization: `Bearer ${config.anonKey}`
+      },
+      body
+    });
+
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(result.error || `Transcription failed with status ${response.status}.`);
+    }
+
+    const transcript = String(result.text || "").trim();
+    if (!transcript) {
+      throw new Error("The transcription service returned an empty transcript.");
+    }
+
+    els.meetingTranscript.value = appendTranscriptBlock(els.meetingTranscript.value, transcript);
+    recordedAudioBlob = null;
+    setRecordingButtons("idle");
+    clearMicNotice();
+    extractActionsFromTranscript();
+    showToast("Transcript added.");
+  } catch (error) {
+    console.warn(error);
+    setRecordingButtons("ready");
+    showMicNotice("Transcription failed.", error.message || "Try again, or paste notes into the transcript box.");
+  }
+}
+
+function getSupportedRecordingMimeType() {
+  const types = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/mp4",
+    "audio/ogg;codecs=opus"
+  ];
+  return types.find((type) => MediaRecorder.isTypeSupported(type)) || "";
+}
+
+function getRecordingFilename(mimeType) {
+  if (mimeType.includes("mp4")) return "meeting-audio.mp4";
+  if (mimeType.includes("ogg")) return "meeting-audio.ogg";
+  return "meeting-audio.webm";
+}
+
+function stopRecordingStream() {
+  if (recordingStream) {
+    recordingStream.getTracks().forEach((track) => track.stop());
+  }
+  recordingStream = null;
+  mediaRecorder = null;
+}
+
+function setRecordingButtons(mode) {
+  els.startRecordingButton.disabled = mode === "recording" || mode === "transcribing";
+  els.stopRecordingButton.disabled = mode !== "recording";
+  els.transcribeRecordingButton.disabled = !recordedAudioBlob || mode === "recording" || mode === "transcribing";
+}
+
+function getTranscriptSpeakerNames() {
+  const names = new Set();
+  splitCsv(els.meetingAttendees.value).forEach((name) => names.add(name));
+  state.directors.forEach((director) => {
+    if (director.name) names.add(director.name);
+    if (director.role) names.add(director.role);
+  });
+  return [...names].map((name) => name.trim()).filter(Boolean).slice(0, 24);
+}
+
+function formatDuration(totalSeconds) {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (!minutes) return `${seconds}s`;
+  return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
+}
+
 async function startDictation() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
@@ -2052,6 +2232,7 @@ async function startDictation() {
   speechRecognition.onend = () => {
     document.getElementById("startTranscriptButton").disabled = false;
     document.getElementById("stopTranscriptButton").disabled = true;
+    speechRecognition = null;
   };
 
   speechRecognition.start();
@@ -2065,22 +2246,20 @@ async function checkMicrophone() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const hasMediaDevices = Boolean(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
 
-  if (!SpeechRecognition) {
-    showMicNotice("This browser does not support built-in speech dictation.", "Use Chrome or Safari for live dictation, or paste a transcript into the notes box.");
-    return;
-  }
-
   if (!hasMediaDevices) {
-    showMicNotice("This browser is not exposing microphone devices to the page.", "Open http://localhost:8000/ in Chrome or Safari. The Codex in-app browser may not be able to pass microphone access through to local pages.");
+    showMicNotice("This browser is not exposing microphone devices to the page.", "Open the online page in Chrome, Edge, or Safari. You can still paste a transcript into the notes box.");
     return;
   }
 
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     stream.getTracks().forEach((track) => track.stop());
-    showMicNotice("Microphone access is available.", "Click Start dictation when you are ready to capture meeting notes.");
+    showMicNotice(
+      "Microphone access is available.",
+      SpeechRecognition ? "Use Record audio for better transcription, or Live dictation for a quick fallback." : "Use Record audio for transcription, or paste notes into the transcript box."
+    );
   } catch (error) {
-    showMicNotice("Microphone access is blocked.", "Allow microphone access for this browser in macOS Privacy & Security settings, then reload the page. If the prompt never appears, open the same localhost URL in Chrome or Safari.");
+    showMicNotice("Microphone access is blocked.", "Allow microphone access for this browser, reload the page, and try again.");
   }
 }
 
@@ -2620,6 +2799,10 @@ function formatDate(value) {
 
 function splitLines(text) {
   return text.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+}
+
+function splitCsv(text) {
+  return String(text || "").split(/[,;]+/).map((item) => item.trim()).filter(Boolean);
 }
 
 function cleanSentence(text) {
