@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>SBSA Board Action Tracker</title>
-    <link rel="stylesheet" href="styles.css?v=20260619-directors">
+    <link rel="stylesheet" href="styles.css?v=20260622-supabase-sync">
   </head>
   <body>
     <div class="app-shell">
@@ -74,6 +74,7 @@
           <div>
             <h2 id="viewTitle">Dashboard</h2>
           </div>
+          <p class="sync-status" id="syncStatus">Local only</p>
         </header>
 
         <section class="view is-active" id="dashboardView" aria-labelledby="dashboardHeading">
@@ -472,6 +473,7 @@
       </div>
     </template>
 
-    <script src="app.js?v=20260619-directors"></script>
+    <script src="supabase-config.js?v=20260622-supabase-sync"></script>
+    <script src="app.js?v=20260622-supabase-sync"></script>
   </body>
 </html>

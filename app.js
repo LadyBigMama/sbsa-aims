@@ -1,4 +1,6 @@
 const STORAGE_KEY = "sbsa-aims-board-action-tracker-v1";
+const CLOUD_TABLE = "board_state";
+const CLOUD_CONFIG = window.SBSA_SUPABASE_CONFIG || {};
 
 const defaultState = {
   directors: [
@@ -101,9 +103,17 @@ let taskQuickFilter = "all";
 let speechRecognition = null;
 let dictationStopRequested = false;
 let toastTimer = null;
+let cloudLastUpdatedAt = "";
+let cloudSaveTimer = null;
+let cloudSaveInFlight = false;
+let cloudPendingSave = false;
+let cloudApplyingState = false;
+let cloudPollTimer = null;
 
 const els = {
   viewTitle: document.getElementById("viewTitle"),
+  syncStatus: document.getElementById("syncStatus"),
+  dashboardView: document.getElementById("dashboardView"),
   metricGrid: document.getElementById("metricGrid"),
   weeklyUpdateList: document.getElementById("weeklyUpdateList"),
   riskList: document.getElementById("riskList"),
@@ -141,12 +151,13 @@ const els = {
 
 document.addEventListener("DOMContentLoaded", init);
 
-function init() {
+async function init() {
   els.meetingDate.value = todayISO();
   els.motionProposedAt.value = todayISO();
   clearMicNotice();
   bindEvents();
   render();
+  await initCloudSync();
 }
 
 function bindEvents() {
@@ -159,6 +170,8 @@ function bindEvents() {
   });
 
   els.metricGrid.addEventListener("click", handleDashboardMetricClick);
+  els.dashboardView.addEventListener("click", handleDashboardTaskOpen);
+  els.dashboardView.addEventListener("keydown", handleDashboardTaskKeydown);
   els.taskForm.addEventListener("submit", addTaskFromForm);
   els.ownerFilter.addEventListener("change", handleTaskFilterChange);
   els.statusFilter.addEventListener("change", handleTaskFilterChange);
@@ -325,8 +338,191 @@ function normalizeMotionVote(vote) {
   };
 }
 
-function saveState() {
+function saveState(options = {}) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  if (!options.skipCloud && !cloudApplyingState) {
+    scheduleCloudSave();
+  }
+}
+
+async function initCloudSync() {
+  const config = getCloudConfig();
+  if (!config.enabled) {
+    setSyncStatus("Local only", "muted");
+    return;
+  }
+
+  setSyncStatus("Syncing...", "working");
+  await pullCloudState({ seedIfEmpty: true });
+
+  if (cloudPollTimer) {
+    window.clearInterval(cloudPollTimer);
+  }
+  cloudPollTimer = window.setInterval(() => pullCloudState({ silent: true }), config.pollMs);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) {
+      pullCloudState({ silent: true });
+    }
+  });
+}
+
+function getCloudConfig() {
+  const url = String(CLOUD_CONFIG.url || "").trim().replace(/\/+$/, "");
+  const anonKey = String(CLOUD_CONFIG.anonKey || "").trim();
+  const pollMs = Number(CLOUD_CONFIG.pollMs) || 15000;
+  return {
+    enabled: Boolean(CLOUD_CONFIG.enabled && url && anonKey),
+    url,
+    anonKey,
+    boardId: String(CLOUD_CONFIG.boardId || "sbsa").trim() || "sbsa",
+    pollMs: Math.max(5000, pollMs)
+  };
+}
+
+function scheduleCloudSave() {
+  if (!getCloudConfig().enabled) return;
+
+  cloudPendingSave = true;
+  setSyncStatus("Saving...", "working");
+
+  if (cloudSaveTimer) {
+    window.clearTimeout(cloudSaveTimer);
+  }
+
+  cloudSaveTimer = window.setTimeout(() => {
+    cloudSaveTimer = null;
+    flushCloudSave();
+  }, 800);
+}
+
+async function flushCloudSave(options = {}) {
+  const config = getCloudConfig();
+  if (!config.enabled) return;
+
+  if (options.force && cloudSaveTimer) {
+    window.clearTimeout(cloudSaveTimer);
+    cloudSaveTimer = null;
+  }
+
+  if (cloudSaveInFlight) {
+    cloudPendingSave = true;
+    return;
+  }
+
+  cloudPendingSave = false;
+  cloudSaveInFlight = true;
+  setSyncStatus("Saving...", "working");
+
+  try {
+    const rows = await cloudRequest(`${CLOUD_TABLE}?on_conflict=id&select=updated_at`, {
+      method: "POST",
+      headers: {
+        Prefer: "resolution=merge-duplicates,return=representation"
+      },
+      body: JSON.stringify({
+        id: config.boardId,
+        state
+      })
+    });
+
+    cloudLastUpdatedAt = Array.isArray(rows) ? rows[0]?.updated_at || cloudLastUpdatedAt : cloudLastUpdatedAt;
+    setSyncStatus(lastSyncedText(), "ok");
+  } catch (error) {
+    console.warn(error);
+    setSyncStatus("Sync failed", "error");
+  } finally {
+    cloudSaveInFlight = false;
+    if (cloudPendingSave) {
+      flushCloudSave();
+    }
+  }
+}
+
+async function pullCloudState(options = {}) {
+  const config = getCloudConfig();
+  if (!config.enabled || cloudSaveInFlight || cloudSaveTimer) return;
+
+  if (!options.silent) {
+    setSyncStatus("Syncing...", "working");
+  }
+
+  try {
+    const rows = await cloudRequest(`${CLOUD_TABLE}?id=eq.${encodeURIComponent(config.boardId)}&select=state,updated_at&limit=1`);
+    const row = Array.isArray(rows) ? rows[0] : null;
+
+    if (!row) {
+      if (options.seedIfEmpty) {
+        await flushCloudSave({ force: true });
+      }
+      return;
+    }
+
+    if (row.updated_at && row.updated_at === cloudLastUpdatedAt) {
+      setSyncStatus(lastSyncedText(), "ok");
+      return;
+    }
+
+    if (!hasSharedBoardContent(row.state) && hasSharedBoardContent(state)) {
+      await flushCloudSave({ force: true });
+      return;
+    }
+
+    cloudLastUpdatedAt = row.updated_at || "";
+    cloudApplyingState = true;
+    state = normalizeState(row.state || defaultState);
+    saveState({ skipCloud: true });
+    cloudApplyingState = false;
+    render();
+    setSyncStatus(lastSyncedText(), "ok");
+  } catch (error) {
+    console.warn(error);
+    setSyncStatus("Sync failed", "error");
+  } finally {
+    cloudApplyingState = false;
+  }
+}
+
+async function cloudRequest(path, options = {}) {
+  const config = getCloudConfig();
+  const response = await fetch(`${config.url}/rest/v1/${path}`, {
+    ...options,
+    headers: {
+      apikey: config.anonKey,
+      Authorization: `Bearer ${config.anonKey}`,
+      "Content-Type": "application/json",
+      ...(options.headers || {})
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Supabase request failed: ${response.status} ${await response.text()}`);
+  }
+
+  const text = await response.text();
+  return text ? JSON.parse(text) : null;
+}
+
+function hasSharedBoardContent(candidateState) {
+  if (!candidateState || typeof candidateState !== "object") return false;
+  const normalized = normalizeState(candidateState);
+  return Boolean(
+    normalized.tasks.length ||
+    normalized.meetings.length ||
+    normalized.meetingDraftActions.length ||
+    normalized.motions.length ||
+    normalized.directors.length > defaultState.directors.length ||
+    normalized.directors.some((director) => director.name || director.email)
+  );
+}
+
+function setSyncStatus(message, tone = "muted") {
+  if (!els.syncStatus) return;
+  els.syncStatus.textContent = message;
+  els.syncStatus.dataset.syncTone = tone;
+}
+
+function lastSyncedText() {
+  return `Synced ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
 }
 
 function render() {
@@ -340,7 +536,7 @@ function render() {
   renderReports();
 }
 
-function switchView(view) {
+function switchView(view, options = {}) {
   activeView = view;
   document.querySelectorAll(".view").forEach((section) => {
     section.classList.toggle("is-active", section.id === `${view}View`);
@@ -351,6 +547,9 @@ function switchView(view) {
   els.viewTitle.textContent = titleCase(view);
   if (view === "reports") {
     renderReports();
+  }
+  if (options.focus === false) {
+    return;
   }
   if (view === "tasks") {
     document.getElementById("taskTitle").focus();
@@ -384,10 +583,10 @@ function renderDashboard() {
   ].join("");
 
   const needsUpdate = getTasksNeedingUpdate().slice(0, 6);
-  renderList(els.weeklyUpdateList, needsUpdate, (task) => taskListItem(task, { includeReminder: true }));
+  renderList(els.weeklyUpdateList, needsUpdate, (task) => taskListItem(task, { includeReminder: true, linkToTask: true }));
 
   const riskTasks = getRiskTasks().slice(0, 6);
-  renderList(els.riskList, riskTasks, (task) => taskListItem(task, { includeBlocker: true }));
+  renderList(els.riskList, riskTasks, (task) => taskListItem(task, { includeBlocker: true, linkToTask: true }));
 }
 
 function metricCard(label, value, tone, target) {
@@ -405,7 +604,8 @@ function handleDashboardMetricClick(event) {
 
   if (metric.dataset.dashboardView === "tasks") {
     applyTaskQuickFilter(metric.dataset.taskQuickFilter || "all");
-    switchView("tasks");
+    switchView("tasks", { focus: false });
+    revealTaskResults();
     return;
   }
 
@@ -413,8 +613,74 @@ function handleDashboardMetricClick(event) {
     els.motionStatusFilter.value = metric.dataset.motionStatusFilter || "all";
     els.motionSearch.value = "";
     renderMotions();
-    switchView("motions");
+    switchView("motions", { focus: false });
+    revealMotionResults();
   }
+}
+
+function handleDashboardTaskOpen(event) {
+  const taskCard = event.target.closest("[data-dashboard-task-id]");
+  if (!taskCard) return;
+  openDashboardTask(taskCard.dataset.dashboardTaskId);
+}
+
+function handleDashboardTaskKeydown(event) {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  const taskCard = event.target.closest("[data-dashboard-task-id]");
+  if (!taskCard) return;
+  event.preventDefault();
+  openDashboardTask(taskCard.dataset.dashboardTaskId);
+}
+
+function openDashboardTask(taskId) {
+  const task = state.tasks.find((candidate) => candidate.id === taskId);
+  if (!task) {
+    showToast("That task is no longer available.");
+    renderDashboard();
+    return;
+  }
+
+  taskQuickFilter = "all";
+  els.ownerFilter.value = "all";
+  els.statusFilter.value = "all";
+  els.taskSearch.value = "";
+  renderTasks();
+  switchView("tasks", { focus: false });
+
+  requestAnimationFrame(() => {
+    const row = findByDataValue(els.taskTableBody, "task-id", taskId);
+    if (!row) {
+      revealTaskResults();
+      return;
+    }
+    revealElement(row, "is-targeted-row");
+  });
+}
+
+function revealTaskResults() {
+  requestAnimationFrame(() => {
+    const firstRow = els.taskTableBody.querySelector("[data-task-id]");
+    const tableWrap = document.querySelector("#tasksView .table-wrap");
+    revealElement(firstRow || tableWrap, firstRow ? "is-targeted-row" : "is-targeted-results");
+  });
+}
+
+function revealMotionResults() {
+  requestAnimationFrame(() => {
+    const firstMotion = els.motionList.querySelector("[data-motion-id]");
+    revealElement(firstMotion || els.motionList, "is-targeted-card");
+  });
+}
+
+function revealElement(element, className) {
+  if (!element) return;
+  element.scrollIntoView({ behavior: "smooth", block: "center" });
+  element.classList.add(className);
+  window.setTimeout(() => element.classList.remove(className), 1800);
+}
+
+function findByDataValue(root, attribute, value) {
+  return [...root.querySelectorAll(`[data-${attribute}]`)].find((element) => element.getAttribute(`data-${attribute}`) === value);
 }
 
 function renderTasks() {
@@ -2094,8 +2360,12 @@ function taskListItem(task, options = {}) {
   const latest = getLatestUpdate(task);
   const blocker = options.includeBlocker && task.blocker ? `<span class="badge amber">Blocked</span>` : "";
   const reminder = options.includeReminder ? `<span class="badge teal">Needs update</span>` : "";
+  const linkClass = options.linkToTask ? " dashboard-task-link" : "";
+  const linkAttrs = options.linkToTask
+    ? ` data-dashboard-task-id="${escapeAttribute(task.id)}" role="button" tabindex="0" aria-label="Open task ${escapeAttribute(task.title)}"`
+    : "";
   return `
-    <article class="list-item">
+    <article class="list-item${linkClass}"${linkAttrs}>
       <div class="list-item-header">
         <div class="list-item-title">
           ${escapeHtml(task.title)}
