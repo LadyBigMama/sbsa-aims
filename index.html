@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>SBSA Board Action Tracker</title>
-    <link rel="stylesheet" href="styles.css?v=20260710-meeting-history">
+    <link rel="stylesheet" href="styles.css?v=20260710-simple-menu">
   </head>
   <body>
     <div class="app-shell">
@@ -65,12 +65,6 @@
             </span>
             Directors
           </button>
-          <button class="nav-button" type="button" data-view="reports">
-            <span class="button-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6V2Zm8 1.5V8h4.5L14 3.5ZM8 12h8v2H8v-2Zm0 4h8v2H8v-2Zm0-8h4v2H8V8Z"></path></svg>
-            </span>
-            Reports
-          </button>
         </nav>
 
       </aside>
@@ -116,6 +110,20 @@
               <div id="riskList" class="stack-list"></div>
             </section>
           </div>
+
+          <section class="panel board-report-panel" id="boardReportPanel">
+            <div class="panel-heading">
+              <div>
+                <h4>Board report</h4>
+                <span class="muted small-text">A ready-to-copy summary for the next BOD packet.</span>
+              </div>
+              <div class="button-row">
+                <button class="secondary-button" type="button" id="copyReportButton">Copy report</button>
+                <button class="ghost-button" type="button" id="printReportButton">Print</button>
+              </div>
+            </div>
+            <pre id="boardReport" class="report-output"></pre>
+          </section>
         </section>
 
         <section class="view" id="tasksView" aria-label="Tasks">
@@ -305,10 +313,27 @@
               <h3 id="historyHeading">Past meetings</h3>
               <p>Open saved minutes, transcripts, agendas, and attendance records.</p>
             </div>
-            <label class="meeting-history-search">
-              <span>Search meetings</span>
-              <input id="meetingHistorySearch" type="search" placeholder="Title, attendee, or text">
-            </label>
+            <div class="meeting-history-heading-tools">
+              <label class="meeting-history-search">
+                <span>Search meetings</span>
+                <input id="meetingHistorySearch" type="search" placeholder="Title, attendee, or text">
+              </label>
+              <div class="button-row meeting-history-data-tools">
+                <label class="file-button" for="importFile">
+                  <span class="button-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><path d="M11 4h2v9l3.5-3.5 1.4 1.4L12 16.8l-5.9-5.9 1.4-1.4L11 13V4ZM5 18h14v2H5v-2Z"></path></svg>
+                  </span>
+                  Import
+                </label>
+                <input class="sr-only" id="importFile" type="file" accept="application/json">
+                <button class="secondary-button" type="button" id="exportDataButton">
+                  <span class="button-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><path d="M11 4h2v9l3.5-3.5 1.4 1.4L12 16.8l-5.9-5.9 1.4-1.4L11 13V4ZM5 20v-2h14v2H5Z"></path></svg>
+                  </span>
+                  Export
+                </button>
+              </div>
+            </div>
           </div>
 
           <div class="meeting-history-layout">
@@ -450,35 +475,6 @@
           </form>
         </section>
 
-        <section class="view" id="reportsView" aria-labelledby="reportsHeading">
-          <div class="section-heading">
-            <div>
-              <h3 id="reportsHeading">Board report</h3>
-              <p>A ready-to-copy report for the next BOD packet or meeting agenda.</p>
-            </div>
-            <div class="button-row">
-              <button class="secondary-button" type="button" id="copyReportButton">Copy report</button>
-              <button class="ghost-button" type="button" id="printReportButton">Print</button>
-              <label class="file-button" for="importFile">
-                <span class="button-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24"><path d="M11 4h2v9l3.5-3.5 1.4 1.4L12 16.8l-5.9-5.9 1.4-1.4L11 13V4ZM5 18h14v2H5v-2Z"></path></svg>
-                </span>
-                Import
-              </label>
-              <input class="sr-only" id="importFile" type="file" accept="application/json">
-              <button class="secondary-button" type="button" id="exportDataButton">
-                <span class="button-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24"><path d="M11 4h2v9l3.5-3.5 1.4 1.4L12 16.8l-5.9-5.9 1.4-1.4L11 13V4ZM5 20v-2h14v2H5Z"></path></svg>
-                </span>
-                Export
-              </button>
-            </div>
-          </div>
-
-          <div class="panel">
-            <pre id="boardReport" class="report-output"></pre>
-          </div>
-        </section>
       </main>
     </div>
 
@@ -492,6 +488,6 @@
     </template>
 
     <script src="supabase-config.js?v=20260622-transcription"></script>
-    <script src="app.js?v=20260710-reset-meeting"></script>
+    <script src="app.js?v=20260710-simple-menu"></script>
   </body>
 </html>

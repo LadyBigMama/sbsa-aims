@@ -769,6 +769,17 @@ button:focus-visible,
   width: min(320px, 100%);
 }
 
+.meeting-history-heading-tools {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.meeting-history-data-tools {
+  flex-wrap: nowrap;
+}
+
 .meeting-history-search span {
   display: block;
   margin-bottom: 6px;
@@ -935,6 +946,10 @@ button:focus-visible,
 
 .meeting-history-transcript[open] summary {
   margin-bottom: 12px;
+}
+
+.board-report-panel {
+  margin-top: 18px;
 }
 
 .action-form {
@@ -1322,6 +1337,20 @@ button:focus-visible,
     justify-content: flex-start;
   }
 
+  .meeting-history-heading-tools {
+    width: 100%;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .meeting-history-search {
+    width: 100%;
+  }
+
+  .meeting-history-data-tools {
+    width: 100%;
+  }
+
   .wide-field {
     grid-column: auto;
   }
@@ -1368,14 +1397,6 @@ button:focus-visible,
     display: none;
   }
 
-  #reportsView {
-    display: block;
-  }
-
-  body.is-printing-meeting #reportsView {
-    display: none;
-  }
-
   body.is-printing-meeting #historyView {
     display: block;
   }
@@ -1395,6 +1416,22 @@ button:focus-visible,
 
   body.is-printing-meeting .meeting-history-detail {
     padding: 0;
+  }
+
+  body.is-printing-report #dashboardView {
+    display: block;
+  }
+
+  body.is-printing-report #dashboardView > *:not(#boardReportPanel),
+  body.is-printing-report #boardReportPanel .panel-heading {
+    display: none;
+  }
+
+  body.is-printing-report #boardReportPanel {
+    display: block;
+    margin: 0;
+    padding: 0;
+    border: 0;
   }
 
   .panel {

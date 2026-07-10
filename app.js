@@ -234,7 +234,7 @@ function bindEvents() {
   els.directorList.addEventListener("click", handleDirectorClick);
 
   document.getElementById("copyReportButton").addEventListener("click", () => copyText(buildBoardReport(), "Board report copied."));
-  document.getElementById("printReportButton").addEventListener("click", () => window.print());
+  document.getElementById("printReportButton").addEventListener("click", printBoardReport);
   document.getElementById("exportDataButton").addEventListener("click", exportData);
   els.importFile.addEventListener("change", importData);
 }
@@ -621,9 +621,6 @@ function switchView(view, options = {}) {
     button.classList.toggle("is-active", button.dataset.view === view);
   });
   els.viewTitle.textContent = view === "history" ? "Past Meetings" : titleCase(view);
-  if (view === "reports") {
-    renderReports();
-  }
   if (view === "history") {
     renderMeetingHistory();
   }
@@ -1275,6 +1272,12 @@ function capitalizeResponsibility(item) {
 
 function renderReports() {
   els.boardReport.textContent = buildBoardReport();
+}
+
+function printBoardReport() {
+  document.body.classList.add("is-printing-report");
+  window.print();
+  window.setTimeout(() => document.body.classList.remove("is-printing-report"), 0);
 }
 
 function addTaskFromForm(event) {
