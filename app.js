@@ -142,8 +142,7 @@ const els = {
   meetingTranscript: document.getElementById("meetingTranscript"),
   meetingMinutes: document.getElementById("meetingMinutes"),
   micNotice: document.getElementById("micNotice"),
-  startRecordingButton: document.getElementById("startRecordingButton"),
-  stopRecordingButton: document.getElementById("stopRecordingButton"),
+  recordingButton: document.getElementById("recordingButton"),
   transcribeRecordingButton: document.getElementById("transcribeRecordingButton"),
   meetingActionForm: document.getElementById("meetingActionForm"),
   meetingActionOwner: document.getElementById("meetingActionOwner"),
@@ -198,8 +197,7 @@ function bindEvents() {
   document.getElementById("draftMinutesButton").addEventListener("click", draftMinutes);
   document.getElementById("saveMeetingButton").addEventListener("click", saveMeeting);
   document.getElementById("copyMinutesButton").addEventListener("click", () => copyText(els.meetingMinutes.value, "Minutes copied."));
-  els.startRecordingButton.addEventListener("click", startAudioRecording);
-  els.stopRecordingButton.addEventListener("click", stopAudioRecording);
+  els.recordingButton.addEventListener("click", toggleAudioRecording);
   els.transcribeRecordingButton.addEventListener("click", transcribeRecordedAudio);
   document.getElementById("startTranscriptButton").addEventListener("click", startDictation);
   document.getElementById("checkMicButton").addEventListener("click", checkMicrophone);
@@ -2066,6 +2064,15 @@ async function startAudioRecording() {
   showToast("Recording started.");
 }
 
+function toggleAudioRecording() {
+  if (mediaRecorder && mediaRecorder.state !== "inactive" && !recordingStopRequested) {
+    stopAudioRecording();
+    return;
+  }
+
+  startAudioRecording();
+}
+
 function startRecordingSegment() {
   if (!recordingStream || recordingStopRequested) return;
 
@@ -2287,9 +2294,15 @@ function clearRecordingSegmentTimer() {
 }
 
 function setRecordingButtons(mode) {
+  const isRecording = mode === "recording";
   const busy = mode === "recording" || mode === "stopping" || mode === "transcribing";
-  els.startRecordingButton.disabled = busy;
-  els.stopRecordingButton.disabled = mode !== "recording";
+  const recordButtonLabel = isRecording ? "Stop recording" : mode === "stopping" ? "Stopping recording" : "Start recording";
+
+  els.recordingButton.disabled = mode === "stopping" || mode === "transcribing";
+  els.recordingButton.classList.toggle("is-recording", isRecording);
+  els.recordingButton.setAttribute("aria-pressed", String(isRecording));
+  els.recordingButton.setAttribute("aria-label", recordButtonLabel);
+  els.recordingButton.title = recordButtonLabel;
   els.transcribeRecordingButton.disabled = !recordedAudioSegments.length || busy;
 }
 

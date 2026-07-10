@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>SBSA Board Action Tracker</title>
-    <link rel="stylesheet" href="styles.css?v=20260622-transcription">
+    <link rel="stylesheet" href="styles.css?v=20260710-meeting-controls">
   </head>
   <body>
     <div class="app-shell">
@@ -196,17 +196,8 @@
               <p>Record the discussion, draft minutes, and turn decisions into assigned tasks.</p>
             </div>
             <div class="button-row">
-              <button class="secondary-button" type="button" id="startRecordingButton">
-                <span class="button-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-3.1a7 7 0 0 0 6-6.9h-2Z"></path></svg>
-                </span>
-                Record audio
-              </button>
-              <button class="ghost-button" type="button" id="stopRecordingButton" disabled>
-                <span class="button-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24"><path d="M6 6h12v12H6V6Z"></path></svg>
-                </span>
-                Stop recording
+              <button class="record-toggle-button" type="button" id="recordingButton" aria-label="Start recording" aria-pressed="false" title="Start recording">
+                <span class="record-symbol" aria-hidden="true"></span>
               </button>
               <button class="secondary-button" type="button" id="transcribeRecordingButton" disabled>
                 <span class="button-icon" aria-hidden="true">
@@ -492,6 +483,6 @@
     </template>
 
     <script src="supabase-config.js?v=20260622-transcription"></script>
-    <script src="app.js?v=20260710-recorder-fix"></script>
+    <script src="app.js?v=20260710-meeting-controls"></script>
   </body>
 </html>

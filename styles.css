@@ -110,6 +110,45 @@ button {
   fill: currentColor;
 }
 
+.record-toggle-button {
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--strong-line);
+  border-radius: 50%;
+}
+
+.record-toggle-button:hover {
+  color: var(--ink);
+  border-color: var(--ink);
+}
+
+.record-toggle-button.is-recording {
+  color: #ffffff;
+  background: var(--red);
+  border-color: var(--red);
+  box-shadow: 0 0 0 4px rgba(179, 58, 58, 0.16);
+}
+
+.record-toggle-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.record-symbol {
+  width: 14px;
+  height: 14px;
+  display: block;
+  background: currentColor;
+  border-radius: 50%;
+}
+
 .brand h1,
 .brand p {
   margin: 0;
@@ -1084,6 +1123,10 @@ button:focus-visible,
   .button-row > *,
   .form-submit {
     flex: 1;
+  }
+
+  .button-row > .record-toggle-button {
+    flex: 0 0 40px;
   }
 }
 
