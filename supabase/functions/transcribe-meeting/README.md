@@ -17,7 +17,7 @@ OPENAI_TRANSCRIPT_CLEANUP=true
 OPENAI_TRANSCRIPT_CLEANUP_MODEL=gpt-5.4-mini
 ```
 
-The browser records speech-optimized mono audio and automatically splits long meetings into eight-minute parts. Each part is diarized, then optionally cleaned with the supplied attendee names, director roles, and SBSA vocabulary. Cleanup is conservative and falls back to the original diarized transcript if it fails.
+The browser records speech-optimized mono audio and automatically splits long meetings into eight-minute parts. Each completed part is transcribed and locally autosaved while the next part records. The final partial part is processed when recording stops. Each part is diarized, then optionally cleaned with the supplied attendee names, director roles, and SBSA vocabulary. Cleanup is conservative and falls back to the original diarized transcript if it fails.
 
 For more reliable speaker names in a recording part, have participants identify themselves with `This is [name]`. Without voice-reference clips or self-identification, diarization uses generic labels such as `Speaker A` and `Speaker B`; labels may reset between long-meeting parts.
 

@@ -1,4 +1,5 @@
 const STORAGE_KEY = "sbsa-aims-board-action-tracker-v1";
+const MEETING_DRAFT_KEY = "sbsa-aims-meeting-draft-v1";
 const CLOUD_TABLE = "board_state";
 const CLOUD_CONFIG = window.SBSA_SUPABASE_CONFIG || {};
 
@@ -111,6 +112,11 @@ let recordingSegmentTimer = null;
 let recordingStopRequested = false;
 let recordingFailed = false;
 let recordingStartedAt = 0;
+let recordingPartNumber = 0;
+let recordingTranscriptionQueue = Promise.resolve();
+let recordingTranscriptBase = "";
+let recordingCleanupApplied = false;
+let recordingCleanupWarnings = [];
 let toastTimer = null;
 let cloudLastUpdatedAt = "";
 let cloudSaveTimer = null;
@@ -168,6 +174,7 @@ async function init() {
   clearMicNotice();
   bindEvents();
   render();
+  restoreMeetingDraft();
   await initCloudSync();
 }
 
@@ -195,6 +202,8 @@ function bindEvents() {
   document.getElementById("draftMinutesButton").addEventListener("click", draftMinutes);
   document.getElementById("saveMeetingButton").addEventListener("click", saveMeeting);
   document.getElementById("copyMinutesButton").addEventListener("click", () => copyText(els.meetingMinutes.value, "Minutes copied."));
+  [els.meetingTitle, els.meetingDate, els.meetingAttendees, els.meetingAgenda, els.meetingTranscript, els.meetingMinutes]
+    .forEach((element) => element.addEventListener("input", saveMeetingDraft));
   els.recordingButton.addEventListener("click", toggleAudioRecording);
   els.transcribeRecordingButton.addEventListener("click", transcribeRecordedAudio);
   els.meetingActionForm.addEventListener("submit", addMeetingActionFromForm);
@@ -223,6 +232,7 @@ function bindEvents() {
 function loadState() {
   if (new URLSearchParams(window.location.search).get("reset") === "1") {
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(MEETING_DRAFT_KEY);
     window.history.replaceState(null, "", window.location.pathname);
   }
 
@@ -237,6 +247,50 @@ function loadState() {
     console.warn(error);
     return structuredClone(defaultState);
   }
+}
+
+function saveMeetingDraft() {
+  const draft = {
+    title: els.meetingTitle.value,
+    date: els.meetingDate.value,
+    attendees: els.meetingAttendees.value,
+    agenda: els.meetingAgenda.value,
+    transcript: els.meetingTranscript.value,
+    minutes: els.meetingMinutes.value,
+    updatedAt: new Date().toISOString()
+  };
+
+  try {
+    localStorage.setItem(MEETING_DRAFT_KEY, JSON.stringify(draft));
+  } catch (error) {
+    console.warn("Meeting draft could not be autosaved.", error);
+  }
+}
+
+function restoreMeetingDraft() {
+  const saved = localStorage.getItem(MEETING_DRAFT_KEY);
+  if (!saved) return;
+
+  try {
+    const draft = JSON.parse(saved);
+    els.meetingTitle.value = String(draft.title || els.meetingTitle.value);
+    els.meetingDate.value = String(draft.date || els.meetingDate.value);
+    els.meetingAttendees.value = String(draft.attendees || "");
+    els.meetingAgenda.value = String(draft.agenda || "");
+    els.meetingTranscript.value = String(draft.transcript || "");
+    els.meetingMinutes.value = String(draft.minutes || "");
+
+    if (els.meetingTranscript.value.trim() || els.meetingMinutes.value.trim()) {
+      showMicNotice("Unsaved meeting restored.", "The latest locally autosaved transcript and meeting draft have been recovered.");
+    }
+  } catch (error) {
+    console.warn("Saved meeting draft could not be restored.", error);
+    localStorage.removeItem(MEETING_DRAFT_KEY);
+  }
+}
+
+function clearMeetingDraft() {
+  localStorage.removeItem(MEETING_DRAFT_KEY);
 }
 
 function normalizeState(nextState) {
@@ -1755,6 +1809,7 @@ function draftMinutes() {
   ].join("\n");
 
   els.meetingMinutes.value = minutes;
+  saveMeetingDraft();
   showToast("Minutes drafted for review.");
 }
 
@@ -1798,6 +1853,7 @@ function saveMeeting() {
   state.meetingDraftActions = [];
   taskQuickFilter = `meeting:${meetingId}`;
   saveState();
+  clearMeetingDraft();
   render();
   switchView("tasks");
   showToast(meetingSaveMessage(createdCount, updatedCount));
@@ -2028,6 +2084,11 @@ async function startAudioRecording() {
   recordingStopRequested = false;
   recordingFailed = false;
   recordingStartedAt = Date.now();
+  recordingPartNumber = 0;
+  recordingTranscriptionQueue = Promise.resolve();
+  recordingTranscriptBase = els.meetingTranscript.value.trim();
+  recordingCleanupApplied = false;
+  recordingCleanupWarnings = [];
 
   try {
     startRecordingSegment();
@@ -2038,7 +2099,7 @@ async function startAudioRecording() {
   }
 
   setRecordingButtons("recording");
-  showMicNotice("Recording in progress.", "Voices are separated automatically. Named labels are most reliable when participants identify themselves; later parts of long meetings may use Speaker A/B labels.");
+  showMicNotice("Recording in progress.", "The first eight-minute segment will be transcribed and autosaved while recording continues. Named speakers are most reliable when participants identify themselves.");
   showToast("Recording started.");
 }
 
@@ -2071,7 +2132,7 @@ function startRecordingSegment() {
     const audioType = recorder.mimeType || recordingMimeType || "audio/webm";
     const segment = new Blob(chunks, { type: audioType });
     if (segment.size) {
-      recordedAudioSegments.push(segment);
+      queueRecordingSegment(segment);
     }
 
     if (recordingStopRequested) {
@@ -2115,9 +2176,9 @@ function stopAudioRecording() {
   }
 }
 
-function finishAudioRecording() {
+async function finishAudioRecording() {
   stopRecordingStream();
-  const hasAudio = recordedAudioSegments.some((segment) => segment.size);
+  const hasAudio = recordedAudioSegments.length > 0;
 
   if (!hasAudio) {
     setRecordingButtons("idle");
@@ -2127,8 +2188,127 @@ function finishAudioRecording() {
 
   const seconds = Math.max(1, Math.round((Date.now() - recordingStartedAt) / 1000));
   const partLabel = recordedAudioSegments.length === 1 ? "1 part" : `${recordedAudioSegments.length} parts`;
-  showMicNotice("Recording complete.", `Recorded ${formatDuration(seconds)} in ${partLabel}. Transcription is starting automatically.`);
-  transcribeRecordedAudio();
+  setRecordingButtons("transcribing");
+  showMicNotice("Finishing transcript...", `Recorded ${formatDuration(seconds)} in ${partLabel}. Waiting for the remaining audio to be processed.`);
+  await recordingTranscriptionQueue;
+
+  const failedSegments = getRetryableRecordingSegments();
+  if (failedSegments.length) {
+    setRecordingButtons("ready");
+    saveMeetingDraft();
+    showMicNotice("Some audio still needs transcription.", `${failedSegments.length} recording ${failedSegments.length === 1 ? "part" : "parts"} could not be processed. Click Retry transcription; the audio has been kept.`);
+    return;
+  }
+
+  completeRecordingTranscription();
+}
+
+function queueRecordingSegment(audio) {
+  const segment = {
+    audio,
+    partNumber: recordingPartNumber + 1,
+    status: "queued",
+    text: "",
+    cleaned: false,
+    cleanupWarning: "",
+    error: ""
+  };
+
+  recordingPartNumber = segment.partNumber;
+  recordedAudioSegments.push(segment);
+  recordingTranscriptionQueue = recordingTranscriptionQueue.then(() => transcribeQueuedRecordingSegment(segment));
+}
+
+async function transcribeQueuedRecordingSegment(segment) {
+  const config = getCloudConfig();
+  if (!config.enabled) {
+    markRecordingSegmentFailed(segment, "Supabase is not configured for cloud transcription.");
+    return;
+  }
+
+  segment.status = "processing";
+  updateRecordingProgress();
+
+  try {
+    const result = await transcribeAudioSegment(segment.audio, segment.partNumber, Math.max(recordingPartNumber, segment.partNumber), config);
+    const transcript = String(result.text || "").trim();
+    if (!transcript) {
+      throw new Error(`The transcription service returned an empty transcript for part ${segment.partNumber}.`);
+    }
+
+    segment.status = "done";
+    segment.text = transcript;
+    segment.cleaned = Boolean(result.cleaned);
+    segment.cleanupWarning = String(result.cleanupWarning || "").trim();
+    segment.error = "";
+    segment.audio = null;
+
+    recordingCleanupApplied = recordingCleanupApplied || segment.cleaned;
+    if (segment.cleanupWarning && !recordingCleanupWarnings.includes(segment.cleanupWarning)) {
+      recordingCleanupWarnings.push(segment.cleanupWarning);
+    }
+
+    renderRollingTranscript();
+  } catch (error) {
+    console.warn(error);
+    markRecordingSegmentFailed(segment, error.message || `Part ${segment.partNumber} could not be transcribed.`);
+  }
+
+  updateRecordingProgress();
+}
+
+function markRecordingSegmentFailed(segment, message) {
+  segment.status = "failed";
+  segment.error = message;
+  updateRecordingProgress();
+}
+
+function renderRollingTranscript() {
+  const transcript = recordedAudioSegments
+    .filter((segment) => segment.status === "done" && segment.text)
+    .sort((first, second) => first.partNumber - second.partNumber)
+    .map((segment) => segment.text)
+    .join("\n\n");
+
+  els.meetingTranscript.value = appendTranscriptBlock(recordingTranscriptBase, transcript);
+  saveMeetingDraft();
+}
+
+function updateRecordingProgress() {
+  if (recordingStopRequested || recordingFailed) return;
+
+  const completedCount = recordedAudioSegments.filter((segment) => segment.status === "done").length;
+  const failedCount = recordedAudioSegments.filter((segment) => segment.status === "failed").length;
+  const processingCount = recordedAudioSegments.filter((segment) => segment.status === "queued" || segment.status === "processing").length;
+  const progress = completedCount
+    ? `${completedCount} ${completedCount === 1 ? "segment has" : "segments have"} been transcribed and autosaved.`
+    : "The first transcript segment will appear after eight minutes.";
+  const pending = processingCount ? ` ${processingCount} ${processingCount === 1 ? "segment is" : "segments are"} processing.` : "";
+  const failed = failedCount ? ` ${failedCount} ${failedCount === 1 ? "segment will" : "segments will"} need a retry after recording stops.` : "";
+
+  els.micNotice.hidden = false;
+  els.micNotice.innerHTML = `<strong>Recording in progress.</strong><span>${escapeHtml(progress + pending + failed)}</span>`;
+}
+
+function getRetryableRecordingSegments() {
+  return recordedAudioSegments.filter((segment) => segment.status === "failed" && segment.audio?.size);
+}
+
+function completeRecordingTranscription() {
+  const completedCount = recordedAudioSegments.filter((segment) => segment.status === "done").length;
+  recordedAudioSegments = [];
+  setRecordingButtons("idle");
+  extractActionsFromTranscript();
+  saveMeetingDraft();
+
+  if (recordingCleanupWarnings.length) {
+    showMicNotice("Transcript saved.", "One or more sections kept their original wording because cleanup was unavailable.");
+  } else {
+    clearMicNotice();
+  }
+
+  const cleaned = recordingCleanupApplied ? " and cleaned" : "";
+  showToast(`${completedCount} ${completedCount === 1 ? "segment" : "segments"} transcribed${cleaned}.`);
 }
 
 function createMediaRecorder(stream, mimeType) {
@@ -2150,77 +2330,57 @@ function handleAudioRecordingFailure(error) {
 
   recordingFailed = true;
   recordingStopRequested = true;
-  recordedAudioSegments = [];
   stopRecordingStream();
+
+  if (recordedAudioSegments.length) {
+    setRecordingButtons("stopping");
+    showMicNotice("Recording stopped unexpectedly.", "Previously captured audio is being finished and saved.");
+    finishAudioRecording();
+    return;
+  }
+
   setRecordingButtons("idle");
   showMicNotice("Recording could not start.", error?.message || "Check microphone access, reload the page, and try again.");
 }
 
 async function transcribeRecordedAudio() {
-  const segments = recordedAudioSegments.filter((segment) => segment.size);
+  const segments = getRetryableRecordingSegments();
   if (!segments.length) {
-    showToast("Record the meeting before transcribing.");
-    return;
-  }
-
-  const config = getCloudConfig();
-  if (!config.enabled) {
-    setRecordingButtons("ready");
-    showMicNotice("Supabase is not configured.", "Enable Supabase sync before using cloud transcription.");
+    showToast("There are no failed transcription segments to retry.");
     return;
   }
 
   setRecordingButtons("transcribing");
-  showMicNotice("Transcribing audio...", `Processing ${segments.length} recording ${segments.length === 1 ? "part" : "parts"}. Keep this page open.`);
-
-  try {
-    const transcriptParts = [];
-    let cleanupApplied = false;
-    const cleanupWarnings = [];
-
-    for (let index = 0; index < segments.length; index += 1) {
-      showMicNotice("Transcribing audio...", `Processing part ${index + 1} of ${segments.length}. Keep this page open.`);
-      const result = await transcribeAudioSegment(segments[index], index, segments.length, config);
-      const transcript = String(result.text || "").trim();
-      if (!transcript) {
-        throw new Error(`The transcription service returned an empty transcript for part ${index + 1}.`);
-      }
-      cleanupApplied = cleanupApplied || Boolean(result.cleaned);
-      if (result.cleanupWarning) {
-        cleanupWarnings.push(`Part ${index + 1}: ${result.cleanupWarning}`);
-      }
-      transcriptParts.push(segments.length > 1 ? `[Recording part ${index + 1}]\n${transcript}` : transcript);
-    }
-
-    els.meetingTranscript.value = appendTranscriptBlock(els.meetingTranscript.value, transcriptParts.join("\n\n"));
-    recordedAudioSegments = [];
-    setRecordingButtons("idle");
-    extractActionsFromTranscript();
-    if (cleanupWarnings.length) {
-      showMicNotice("Transcript added.", "The wording cleanup was skipped for one or more parts; the original transcription was kept.");
-    } else {
-      clearMicNotice();
-    }
-    showToast(cleanupApplied ? "Transcript added and cleaned." : "Transcript added.");
-  } catch (error) {
-    console.warn(error);
-    setRecordingButtons("ready");
-    showMicNotice("Transcription failed.", error.message || "Try again, or paste notes into the transcript box.");
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index];
+    segment.status = "queued";
+    segment.error = "";
+    showMicNotice("Retrying transcription...", `Processing saved part ${index + 1} of ${segments.length}.`);
+    await transcribeQueuedRecordingSegment(segment);
   }
+
+  const failedSegments = getRetryableRecordingSegments();
+  if (failedSegments.length) {
+    setRecordingButtons("ready");
+    showMicNotice("Transcription retry incomplete.", `${failedSegments.length} recording ${failedSegments.length === 1 ? "part still needs" : "parts still need"} transcription. The audio remains available for another retry.`);
+    return;
+  }
+
+  completeRecordingTranscription();
 }
 
-async function transcribeAudioSegment(audio, index, total, config) {
+async function transcribeAudioSegment(audio, partNumber, total, config) {
   if (audio.size > MAX_TRANSCRIPTION_AUDIO_BYTES) {
-    throw new Error(`Recording part ${index + 1} is larger than 25 MB. Record shorter sections and try again.`);
+    throw new Error(`Recording part ${partNumber} is larger than 25 MB. Record shorter sections and try again.`);
   }
 
   const body = new FormData();
-  body.append("audio", audio, getRecordingFilename(audio.type, index));
+  body.append("audio", audio, getRecordingFilename(audio.type, partNumber - 1));
   body.append("meetingTitle", els.meetingTitle.value.trim());
   body.append("attendees", els.meetingAttendees.value.trim());
   body.append("speakerNames", JSON.stringify(getTranscriptSpeakerNames()));
   body.append("glossary", JSON.stringify(getTranscriptionGlossary()));
-  body.append("partNumber", String(index + 1));
+  body.append("partNumber", String(partNumber));
   body.append("partCount", String(total));
 
   const response = await fetch(`${config.url}/functions/v1/${encodeURIComponent(config.transcriptionFunction)}`, {
@@ -2276,7 +2436,7 @@ function clearRecordingSegmentTimer() {
 function setRecordingButtons(mode) {
   const isRecording = mode === "recording";
   const busy = mode === "recording" || mode === "stopping" || mode === "transcribing";
-  const canRetryTranscription = mode === "ready" && recordedAudioSegments.some((segment) => segment.size);
+  const canRetryTranscription = mode === "ready" && getRetryableRecordingSegments().length > 0;
   const recordButtonLabel = isRecording ? "Stop recording" : mode === "stopping" ? "Stopping recording" : "Start recording";
 
   els.recordingButton.disabled = mode === "stopping" || mode === "transcribing";
