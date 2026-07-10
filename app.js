@@ -97,6 +97,10 @@ const DEFAULT_DIRECTOR_PLACEHOLDER_NAMES = new Set([
   "Vice President"
 ]);
 
+const RECORDING_SEGMENT_MS = 8 * 60 * 1000;
+const RECORDING_AUDIO_BITS_PER_SECOND = 48_000;
+const MAX_TRANSCRIPTION_AUDIO_BYTES = 25 * 1024 * 1024;
+
 let state = loadState();
 let activeView = "dashboard";
 let taskQuickFilter = "all";
@@ -104,8 +108,10 @@ let speechRecognition = null;
 let dictationStopRequested = false;
 let mediaRecorder = null;
 let recordingStream = null;
-let recordingChunks = [];
-let recordedAudioBlob = null;
+let recordedAudioSegments = [];
+let recordingMimeType = "";
+let recordingSegmentTimer = null;
+let recordingStopRequested = false;
 let recordingStartedAt = 0;
 let toastTimer = null;
 let cloudLastUpdatedAt = "";
@@ -2030,7 +2036,9 @@ async function startAudioRecording() {
       audio: {
         echoCancellation: true,
         noiseSuppression: true,
-        autoGainControl: true
+        autoGainControl: true,
+        channelCount: { ideal: 1 },
+        sampleRate: { ideal: 48_000 }
       }
     });
   } catch (error) {
@@ -2039,44 +2047,89 @@ async function startAudioRecording() {
     return;
   }
 
-  const mimeType = getSupportedRecordingMimeType();
-  recordedAudioBlob = null;
-  recordingChunks = [];
+  recordedAudioSegments = [];
+  recordingMimeType = getSupportedRecordingMimeType();
+  recordingStopRequested = false;
   recordingStartedAt = Date.now();
-  mediaRecorder = mimeType ? new MediaRecorder(recordingStream, { mimeType }) : new MediaRecorder(recordingStream);
-
-  mediaRecorder.addEventListener("dataavailable", (event) => {
-    if (event.data?.size) {
-      recordingChunks.push(event.data);
-    }
-  });
-
-  mediaRecorder.addEventListener("stop", () => {
-    const audioType = mediaRecorder.mimeType || mimeType || "audio/webm";
-    recordedAudioBlob = new Blob(recordingChunks, { type: audioType });
-    stopRecordingStream();
-    setRecordingButtons("ready");
-    const seconds = Math.max(1, Math.round((Date.now() - recordingStartedAt) / 1000));
-    showMicNotice("Recording ready.", `Recorded ${formatDuration(seconds)}. Click Transcribe when ready.`);
-  }, { once: true });
-
-  mediaRecorder.start();
+  startRecordingSegment();
   setRecordingButtons("recording");
-  clearMicNotice();
+  showMicNotice("Recording in progress.", "Voices are separated automatically. Named labels are most reliable when participants identify themselves; later parts of long meetings may use Speaker A/B labels.");
   showToast("Recording started.");
 }
 
+function startRecordingSegment() {
+  if (!recordingStream || recordingStopRequested) return;
+
+  const chunks = [];
+  const options = {
+    audioBitsPerSecond: RECORDING_AUDIO_BITS_PER_SECOND
+  };
+  if (recordingMimeType) {
+    options.mimeType = recordingMimeType;
+  }
+
+  try {
+    mediaRecorder = new MediaRecorder(recordingStream, options);
+  } catch (error) {
+    console.warn("Falling back to browser recording defaults.", error);
+    mediaRecorder = recordingMimeType
+      ? new MediaRecorder(recordingStream, { mimeType: recordingMimeType })
+      : new MediaRecorder(recordingStream);
+  }
+
+  const recorder = mediaRecorder;
+  recorder.addEventListener("dataavailable", (event) => {
+    if (event.data?.size) {
+      chunks.push(event.data);
+    }
+  });
+
+  recorder.addEventListener("stop", () => {
+    clearRecordingSegmentTimer();
+    const audioType = recorder.mimeType || recordingMimeType || "audio/webm";
+    const segment = new Blob(chunks, { type: audioType });
+    if (segment.size) {
+      recordedAudioSegments.push(segment);
+    }
+
+    if (recordingStopRequested) {
+      finishAudioRecording();
+      return;
+    }
+
+    startRecordingSegment();
+  }, { once: true });
+
+  recorder.start(1000);
+  recordingSegmentTimer = setTimeout(() => {
+    if (recorder.state !== "inactive") {
+      recorder.stop();
+    }
+  }, RECORDING_SEGMENT_MS);
+}
+
 function stopAudioRecording() {
+  recordingStopRequested = true;
+  clearRecordingSegmentTimer();
   if (mediaRecorder && mediaRecorder.state !== "inactive") {
     mediaRecorder.stop();
   } else {
-    stopRecordingStream();
-    setRecordingButtons(recordedAudioBlob ? "ready" : "idle");
+    finishAudioRecording();
   }
 }
 
+function finishAudioRecording() {
+  stopRecordingStream();
+  const hasAudio = recordedAudioSegments.some((segment) => segment.size);
+  setRecordingButtons(hasAudio ? "ready" : "idle");
+  const seconds = Math.max(1, Math.round((Date.now() - recordingStartedAt) / 1000));
+  const partLabel = recordedAudioSegments.length === 1 ? "1 part" : `${recordedAudioSegments.length} parts`;
+  showMicNotice("Recording ready.", `Recorded ${formatDuration(seconds)} in ${partLabel}. Click Transcribe when ready.`);
+}
+
 async function transcribeRecordedAudio() {
-  if (!recordedAudioBlob?.size) {
+  const segments = recordedAudioSegments.filter((segment) => segment.size);
+  if (!segments.length) {
     showToast("Record audio before transcribing.");
     return;
   }
@@ -2088,45 +2141,72 @@ async function transcribeRecordedAudio() {
   }
 
   setRecordingButtons("transcribing");
-  showMicNotice("Transcribing audio...", "Keep this page open while the meeting audio is processed.");
+  showMicNotice("Transcribing audio...", `Processing ${segments.length} recording ${segments.length === 1 ? "part" : "parts"}. Keep this page open.`);
 
   try {
-    const body = new FormData();
-    body.append("audio", recordedAudioBlob, getRecordingFilename(recordedAudioBlob.type));
-    body.append("meetingTitle", els.meetingTitle.value.trim());
-    body.append("attendees", els.meetingAttendees.value.trim());
-    body.append("speakerNames", JSON.stringify(getTranscriptSpeakerNames()));
+    const transcriptParts = [];
+    let cleanupApplied = false;
+    const cleanupWarnings = [];
 
-    const response = await fetch(`${config.url}/functions/v1/${encodeURIComponent(config.transcriptionFunction)}`, {
-      method: "POST",
-      headers: {
-        apikey: config.anonKey,
-        Authorization: `Bearer ${config.anonKey}`
-      },
-      body
-    });
-
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(result.error || `Transcription failed with status ${response.status}.`);
+    for (let index = 0; index < segments.length; index += 1) {
+      showMicNotice("Transcribing audio...", `Processing part ${index + 1} of ${segments.length}. Keep this page open.`);
+      const result = await transcribeAudioSegment(segments[index], index, segments.length, config);
+      const transcript = String(result.text || "").trim();
+      if (!transcript) {
+        throw new Error(`The transcription service returned an empty transcript for part ${index + 1}.`);
+      }
+      cleanupApplied = cleanupApplied || Boolean(result.cleaned);
+      if (result.cleanupWarning) {
+        cleanupWarnings.push(`Part ${index + 1}: ${result.cleanupWarning}`);
+      }
+      transcriptParts.push(segments.length > 1 ? `[Recording part ${index + 1}]\n${transcript}` : transcript);
     }
 
-    const transcript = String(result.text || "").trim();
-    if (!transcript) {
-      throw new Error("The transcription service returned an empty transcript.");
-    }
-
-    els.meetingTranscript.value = appendTranscriptBlock(els.meetingTranscript.value, transcript);
-    recordedAudioBlob = null;
+    els.meetingTranscript.value = appendTranscriptBlock(els.meetingTranscript.value, transcriptParts.join("\n\n"));
+    recordedAudioSegments = [];
     setRecordingButtons("idle");
-    clearMicNotice();
     extractActionsFromTranscript();
-    showToast("Transcript added.");
+    if (cleanupWarnings.length) {
+      showMicNotice("Transcript added.", "The wording cleanup was skipped for one or more parts; the original transcription was kept.");
+    } else {
+      clearMicNotice();
+    }
+    showToast(cleanupApplied ? "Transcript added and cleaned." : "Transcript added.");
   } catch (error) {
     console.warn(error);
     setRecordingButtons("ready");
     showMicNotice("Transcription failed.", error.message || "Try again, or paste notes into the transcript box.");
   }
+}
+
+async function transcribeAudioSegment(audio, index, total, config) {
+  if (audio.size > MAX_TRANSCRIPTION_AUDIO_BYTES) {
+    throw new Error(`Recording part ${index + 1} is larger than 25 MB. Record shorter sections and try again.`);
+  }
+
+  const body = new FormData();
+  body.append("audio", audio, getRecordingFilename(audio.type, index));
+  body.append("meetingTitle", els.meetingTitle.value.trim());
+  body.append("attendees", els.meetingAttendees.value.trim());
+  body.append("speakerNames", JSON.stringify(getTranscriptSpeakerNames()));
+  body.append("glossary", JSON.stringify(getTranscriptionGlossary()));
+  body.append("partNumber", String(index + 1));
+  body.append("partCount", String(total));
+
+  const response = await fetch(`${config.url}/functions/v1/${encodeURIComponent(config.transcriptionFunction)}`, {
+    method: "POST",
+    headers: {
+      apikey: config.anonKey,
+      Authorization: `Bearer ${config.anonKey}`
+    },
+    body
+  });
+
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(result.error || `Transcription failed with status ${response.status}.`);
+  }
+  return result;
 }
 
 function getSupportedRecordingMimeType() {
@@ -2136,16 +2216,19 @@ function getSupportedRecordingMimeType() {
     "audio/mp4",
     "audio/ogg;codecs=opus"
   ];
+  if (typeof MediaRecorder.isTypeSupported !== "function") return "";
   return types.find((type) => MediaRecorder.isTypeSupported(type)) || "";
 }
 
-function getRecordingFilename(mimeType) {
-  if (mimeType.includes("mp4")) return "meeting-audio.mp4";
-  if (mimeType.includes("ogg")) return "meeting-audio.ogg";
-  return "meeting-audio.webm";
+function getRecordingFilename(mimeType, index = 0) {
+  const part = String(index + 1).padStart(2, "0");
+  if (mimeType.includes("mp4")) return `meeting-audio-${part}.mp4`;
+  if (mimeType.includes("ogg")) return `meeting-audio-${part}.ogg`;
+  return `meeting-audio-${part}.webm`;
 }
 
 function stopRecordingStream() {
+  clearRecordingSegmentTimer();
   if (recordingStream) {
     recordingStream.getTracks().forEach((track) => track.stop());
   }
@@ -2153,10 +2236,17 @@ function stopRecordingStream() {
   mediaRecorder = null;
 }
 
+function clearRecordingSegmentTimer() {
+  if (recordingSegmentTimer) {
+    clearTimeout(recordingSegmentTimer);
+    recordingSegmentTimer = null;
+  }
+}
+
 function setRecordingButtons(mode) {
   els.startRecordingButton.disabled = mode === "recording" || mode === "transcribing";
   els.stopRecordingButton.disabled = mode !== "recording";
-  els.transcribeRecordingButton.disabled = !recordedAudioBlob || mode === "recording" || mode === "transcribing";
+  els.transcribeRecordingButton.disabled = !recordedAudioSegments.length || mode === "recording" || mode === "transcribing";
 }
 
 function getTranscriptSpeakerNames() {
@@ -2167,6 +2257,33 @@ function getTranscriptSpeakerNames() {
     if (director.role) names.add(director.role);
   });
   return [...names].map((name) => name.trim()).filter(Boolean).slice(0, 24);
+}
+
+function getTranscriptionGlossary() {
+  const terms = new Set([
+    "SBSA",
+    "Santa Barbara Soaring Association",
+    "Friends of Toro",
+    "Toro Ridge",
+    "Elings",
+    "Elings Park",
+    "Parma",
+    "Skyport",
+    "Eliminator",
+    "Wilcox",
+    "Douglas Family Preserve",
+    "Marco Polo",
+    "VOR",
+    "USHPA",
+    "RMHPA"
+  ]);
+
+  splitCsv(els.meetingAttendees.value).forEach((name) => terms.add(name));
+  state.directors.forEach((director) => {
+    [director.name, director.role, director.area].filter(Boolean).forEach((value) => terms.add(value));
+  });
+
+  return [...terms].map((term) => String(term).trim()).filter(Boolean).slice(0, 80);
 }
 
 function formatDuration(totalSeconds) {
