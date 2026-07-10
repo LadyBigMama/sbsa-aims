@@ -267,6 +267,10 @@ button {
   flex-wrap: wrap;
 }
 
+.button-row > button[hidden] {
+  display: none;
+}
+
 .view {
   display: none;
   padding: 26px 28px 42px;

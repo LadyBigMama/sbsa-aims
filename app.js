@@ -2118,16 +2118,17 @@ function stopAudioRecording() {
 function finishAudioRecording() {
   stopRecordingStream();
   const hasAudio = recordedAudioSegments.some((segment) => segment.size);
-  setRecordingButtons(hasAudio ? "ready" : "idle");
 
   if (!hasAudio) {
+    setRecordingButtons("idle");
     showMicNotice("No audio was captured.", "Confirm microphone access in the browser's website settings, then try recording again.");
     return;
   }
 
   const seconds = Math.max(1, Math.round((Date.now() - recordingStartedAt) / 1000));
   const partLabel = recordedAudioSegments.length === 1 ? "1 part" : `${recordedAudioSegments.length} parts`;
-  showMicNotice("Recording ready.", `Recorded ${formatDuration(seconds)} in ${partLabel}. Click Transcribe when ready.`);
+  showMicNotice("Recording complete.", `Recorded ${formatDuration(seconds)} in ${partLabel}. Transcription is starting automatically.`);
+  transcribeRecordedAudio();
 }
 
 function createMediaRecorder(stream, mimeType) {
@@ -2164,6 +2165,7 @@ async function transcribeRecordedAudio() {
 
   const config = getCloudConfig();
   if (!config.enabled) {
+    setRecordingButtons("ready");
     showMicNotice("Supabase is not configured.", "Enable Supabase sync before using cloud transcription.");
     return;
   }
@@ -2274,6 +2276,7 @@ function clearRecordingSegmentTimer() {
 function setRecordingButtons(mode) {
   const isRecording = mode === "recording";
   const busy = mode === "recording" || mode === "stopping" || mode === "transcribing";
+  const canRetryTranscription = mode === "ready" && recordedAudioSegments.some((segment) => segment.size);
   const recordButtonLabel = isRecording ? "Stop recording" : mode === "stopping" ? "Stopping recording" : "Start recording";
 
   els.recordingButton.disabled = mode === "stopping" || mode === "transcribing";
@@ -2281,7 +2284,8 @@ function setRecordingButtons(mode) {
   els.recordingButton.setAttribute("aria-pressed", String(isRecording));
   els.recordingButton.setAttribute("aria-label", recordButtonLabel);
   els.recordingButton.title = recordButtonLabel;
-  els.transcribeRecordingButton.disabled = !recordedAudioSegments.length || busy;
+  els.transcribeRecordingButton.hidden = !canRetryTranscription;
+  els.transcribeRecordingButton.disabled = !canRetryTranscription || busy;
 }
 
 function getTranscriptSpeakerNames() {
