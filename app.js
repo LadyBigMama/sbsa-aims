@@ -113,6 +113,7 @@ let recordingSegmentTimer = null;
 let recordingStopRequested = false;
 let recordingFailed = false;
 let recordingStartedAt = 0;
+let recordingSessionId = 0;
 let recordingPartNumber = 0;
 let recordingTranscriptionQueue = Promise.resolve();
 let recordingTranscriptBase = "";
@@ -152,6 +153,7 @@ const els = {
   micNotice: document.getElementById("micNotice"),
   recordingButton: document.getElementById("recordingButton"),
   transcribeRecordingButton: document.getElementById("transcribeRecordingButton"),
+  resetMeetingButton: document.getElementById("resetMeetingButton"),
   meetingActionForm: document.getElementById("meetingActionForm"),
   meetingActionOwner: document.getElementById("meetingActionOwner"),
   meetingActionList: document.getElementById("meetingActionList"),
@@ -210,6 +212,7 @@ function bindEvents() {
     .forEach((element) => element.addEventListener("input", saveMeetingDraft));
   els.recordingButton.addEventListener("click", toggleAudioRecording);
   els.transcribeRecordingButton.addEventListener("click", transcribeRecordedAudio);
+  els.resetMeetingButton.addEventListener("click", resetCurrentMeeting);
   els.meetingHistorySearch.addEventListener("input", renderMeetingHistory);
   els.meetingHistoryList.addEventListener("click", handleMeetingHistoryClick);
   els.meetingHistoryDetail.addEventListener("click", handleMeetingHistoryClick);
@@ -2224,6 +2227,7 @@ async function startAudioRecording() {
   recordingStopRequested = false;
   recordingFailed = false;
   recordingStartedAt = Date.now();
+  recordingSessionId += 1;
   recordingPartNumber = 0;
   recordingTranscriptionQueue = Promise.resolve();
   recordingTranscriptBase = els.meetingTranscript.value.trim();
@@ -2250,6 +2254,39 @@ function toggleAudioRecording() {
   }
 
   startAudioRecording();
+}
+
+function resetCurrentMeeting() {
+  const confirmed = window.confirm("Reset this unsaved meeting? The transcript, draft minutes, and current action items will be cleared.");
+  if (!confirmed) return;
+
+  recordingStopRequested = true;
+  recordingFailed = true;
+  recordingSessionId += 1;
+  stopRecordingStream();
+  recordedAudioSegments = [];
+  recordingPartNumber = 0;
+  recordingTranscriptionQueue = Promise.resolve();
+  recordingTranscriptBase = "";
+  recordingCleanupApplied = false;
+  recordingCleanupWarnings = [];
+
+  els.meetingTitle.value = "Monthly Board Meeting";
+  els.meetingDate.value = todayISO();
+  els.meetingAttendees.value = "";
+  els.meetingAgenda.value = "";
+  els.meetingTranscript.value = "";
+  els.meetingMinutes.value = "";
+  document.getElementById("meetingActionTitle").value = "";
+  document.getElementById("meetingActionDue").value = "";
+
+  state.meetingDraftActions = [];
+  clearMeetingDraft();
+  saveState();
+  renderMeetingActions();
+  setRecordingButtons("idle");
+  clearMicNotice();
+  showToast("Current meeting reset.");
 }
 
 function startRecordingSegment() {
@@ -2316,7 +2353,7 @@ function stopAudioRecording() {
   }
 }
 
-async function finishAudioRecording() {
+async function finishAudioRecording(sessionId = recordingSessionId) {
   stopRecordingStream();
   const hasAudio = recordedAudioSegments.length > 0;
 
@@ -2332,6 +2369,8 @@ async function finishAudioRecording() {
   showMicNotice("Finishing transcript...", `Recorded ${formatDuration(seconds)} in ${partLabel}. Waiting for the remaining audio to be processed.`);
   await recordingTranscriptionQueue;
 
+  if (sessionId !== recordingSessionId) return;
+
   const failedSegments = getRetryableRecordingSegments();
   if (failedSegments.length) {
     setRecordingButtons("ready");
@@ -2346,6 +2385,7 @@ async function finishAudioRecording() {
 function queueRecordingSegment(audio) {
   const segment = {
     audio,
+    sessionId: recordingSessionId,
     partNumber: recordingPartNumber + 1,
     status: "queued",
     text: "",
@@ -2360,14 +2400,19 @@ function queueRecordingSegment(audio) {
 }
 
 async function transcribeQueuedRecordingSegment(segment) {
+  if (segment.sessionId !== recordingSessionId) return;
+
   const config = getCloudConfig();
   if (!config.enabled) {
     markRecordingSegmentFailed(segment, "Supabase is not configured for cloud transcription.");
     return;
   }
 
+  if (segment.sessionId !== recordingSessionId) return;
   segment.status = "processing";
-  updateRecordingProgress();
+  if (segment.sessionId === recordingSessionId) {
+    updateRecordingProgress();
+  }
 
   try {
     const result = await transcribeAudioSegment(segment.audio, segment.partNumber, Math.max(recordingPartNumber, segment.partNumber), config);
