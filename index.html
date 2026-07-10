@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>SBSA Board Action Tracker</title>
-    <link rel="stylesheet" href="styles.css?v=20260710-meeting-controls">
+    <link rel="stylesheet" href="styles.css?v=20260710-meeting-history">
   </head>
   <body>
     <div class="app-shell">
@@ -40,6 +40,12 @@
               <svg viewBox="0 0 24 24"><path d="M7 2h2v2h6V2h2v2h3v18H4V4h3V2Zm11 8H6v10h12V10ZM6 8h12V6H6v2Z"></path></svg>
             </span>
             Meeting
+          </button>
+          <button class="nav-button" type="button" data-view="history">
+            <span class="button-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M5 3h14v18H5V3Zm2 2v14h10V5H7Zm2 3h6v2H9V8Zm0 4h6v2H9v-2Zm0 4h4v2H9v-2Z"></path></svg>
+            </span>
+            Past meetings
           </button>
           <button class="nav-button" type="button" data-view="motions">
             <span class="button-icon" aria-hidden="true">
@@ -292,6 +298,26 @@
           </div>
         </section>
 
+        <section class="view" id="historyView" aria-labelledby="historyHeading">
+          <div class="section-heading meeting-history-heading">
+            <div>
+              <h3 id="historyHeading">Past meetings</h3>
+              <p>Open saved minutes, transcripts, agendas, and attendance records.</p>
+            </div>
+            <label class="meeting-history-search">
+              <span>Search meetings</span>
+              <input id="meetingHistorySearch" type="search" placeholder="Title, attendee, or text">
+            </label>
+          </div>
+
+          <div class="meeting-history-layout">
+            <aside class="meeting-history-sidebar" aria-label="Saved meetings">
+              <div id="meetingHistoryList" class="meeting-history-list"></div>
+            </aside>
+            <article id="meetingHistoryDetail" class="meeting-history-detail" aria-live="polite"></article>
+          </div>
+        </section>
+
         <section class="view" id="motionsView" aria-label="Motions">
 
           <form class="form-grid compact-form motion-form" id="motionForm">
@@ -465,6 +491,6 @@
     </template>
 
     <script src="supabase-config.js?v=20260622-transcription"></script>
-    <script src="app.js?v=20260710-rolling-transcription"></script>
+    <script src="app.js?v=20260710-meeting-history"></script>
   </body>
 </html>

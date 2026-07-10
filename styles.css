@@ -750,6 +750,182 @@ button:focus-visible,
   gap: 14px;
 }
 
+.meeting-history-heading {
+  align-items: flex-end;
+}
+
+.meeting-history-search {
+  width: min(320px, 100%);
+}
+
+.meeting-history-search span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.meeting-history-layout {
+  min-height: 620px;
+  display: grid;
+  grid-template-columns: minmax(250px, 320px) minmax(0, 1fr);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.meeting-history-sidebar {
+  min-width: 0;
+  background: #f8fafb;
+  border-right: 1px solid var(--line);
+}
+
+.meeting-history-list {
+  max-height: 72vh;
+  overflow-y: auto;
+}
+
+.meeting-history-list .empty-state {
+  margin: 14px;
+}
+
+.meeting-history-item {
+  width: 100%;
+  min-height: 112px;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  padding: 14px 16px;
+  color: var(--ink);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.meeting-history-item:hover,
+.meeting-history-item:focus-visible {
+  background: #eef5f6;
+}
+
+.meeting-history-item.is-selected {
+  background: #e5f0f2;
+  box-shadow: inset 4px 0 0 var(--primary);
+}
+
+.meeting-history-item strong,
+.meeting-history-item span,
+.meeting-history-item small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.meeting-history-item span,
+.meeting-history-item small {
+  color: var(--muted);
+}
+
+.meeting-history-item small {
+  font-size: 12px;
+}
+
+.meeting-history-detail {
+  min-width: 0;
+  padding: 24px 28px 36px;
+}
+
+.meeting-history-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.meeting-history-detail-header h4,
+.meeting-history-detail-header p {
+  margin: 0;
+}
+
+.meeting-history-detail-header h4 {
+  font-size: 20px;
+}
+
+.meeting-history-detail-header p {
+  margin-top: 4px;
+  color: var(--muted);
+}
+
+.meeting-history-actions {
+  justify-content: flex-end;
+}
+
+.meeting-history-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(140px, 0.3fr);
+  gap: 16px;
+  margin: 18px 0 0;
+}
+
+.meeting-history-meta div {
+  min-width: 0;
+}
+
+.meeting-history-meta dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.meeting-history-meta dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.meeting-history-section {
+  margin-top: 24px;
+}
+
+.meeting-history-section h5 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.meeting-history-section pre,
+.meeting-history-transcript pre {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  color: var(--ink);
+  font: inherit;
+  line-height: 1.55;
+}
+
+.meeting-history-minutes {
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.meeting-history-transcript {
+  margin-top: 28px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.meeting-history-transcript summary {
+  cursor: pointer;
+  color: var(--primary-dark);
+  font-weight: 700;
+}
+
+.meeting-history-transcript[open] summary {
+  margin-bottom: 12px;
+}
+
 .action-form {
   grid-template-columns: 1fr 0.6fr 0.48fr auto;
   align-items: end;
@@ -1104,6 +1280,37 @@ button:focus-visible,
     grid-template-columns: 1fr;
   }
 
+  .meeting-history-layout {
+    min-height: auto;
+    grid-template-columns: 1fr;
+  }
+
+  .meeting-history-sidebar {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .meeting-history-list {
+    max-height: 280px;
+  }
+
+  .meeting-history-detail {
+    padding: 20px 16px 28px;
+  }
+
+  .meeting-history-detail-header {
+    flex-direction: column;
+  }
+
+  .meeting-history-meta {
+    grid-template-columns: 1fr;
+  }
+
+  .meeting-history-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
   .wide-field {
     grid-column: auto;
   }
@@ -1152,6 +1359,31 @@ button:focus-visible,
 
   #reportsView {
     display: block;
+  }
+
+  body.is-printing-meeting #reportsView {
+    display: none;
+  }
+
+  body.is-printing-meeting #historyView {
+    display: block;
+  }
+
+  body.is-printing-meeting #historyView .section-heading,
+  body.is-printing-meeting .meeting-history-sidebar,
+  body.is-printing-meeting .meeting-history-actions,
+  body.is-printing-meeting .meeting-history-transcript {
+    display: none;
+  }
+
+  body.is-printing-meeting .meeting-history-layout {
+    display: block;
+    min-height: 0;
+    border: 0;
+  }
+
+  body.is-printing-meeting .meeting-history-detail {
+    padding: 0;
   }
 
   .panel {

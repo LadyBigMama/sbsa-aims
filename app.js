@@ -104,6 +104,7 @@ const MAX_TRANSCRIPTION_AUDIO_BYTES = 25 * 1024 * 1024;
 let state = loadState();
 let activeView = "dashboard";
 let taskQuickFilter = "all";
+let selectedMeetingId = "";
 let mediaRecorder = null;
 let recordingStream = null;
 let recordedAudioSegments = [];
@@ -145,6 +146,9 @@ const els = {
   meetingAgenda: document.getElementById("meetingAgenda"),
   meetingTranscript: document.getElementById("meetingTranscript"),
   meetingMinutes: document.getElementById("meetingMinutes"),
+  meetingHistorySearch: document.getElementById("meetingHistorySearch"),
+  meetingHistoryList: document.getElementById("meetingHistoryList"),
+  meetingHistoryDetail: document.getElementById("meetingHistoryDetail"),
   micNotice: document.getElementById("micNotice"),
   recordingButton: document.getElementById("recordingButton"),
   transcribeRecordingButton: document.getElementById("transcribeRecordingButton"),
@@ -206,6 +210,9 @@ function bindEvents() {
     .forEach((element) => element.addEventListener("input", saveMeetingDraft));
   els.recordingButton.addEventListener("click", toggleAudioRecording);
   els.transcribeRecordingButton.addEventListener("click", transcribeRecordedAudio);
+  els.meetingHistorySearch.addEventListener("input", renderMeetingHistory);
+  els.meetingHistoryList.addEventListener("click", handleMeetingHistoryClick);
+  els.meetingHistoryDetail.addEventListener("click", handleMeetingHistoryClick);
   els.meetingActionForm.addEventListener("submit", addMeetingActionFromForm);
   els.meetingActionList.addEventListener("click", handleMeetingActionClick);
 
@@ -595,6 +602,7 @@ function render() {
   renderDashboard();
   renderTasks();
   renderMeetingActions();
+  renderMeetingHistory();
   renderMotions();
   renderReminders();
   renderDirectors();
@@ -609,9 +617,12 @@ function switchView(view, options = {}) {
   document.querySelectorAll("[data-view]").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.view === view);
   });
-  els.viewTitle.textContent = titleCase(view);
+  els.viewTitle.textContent = view === "history" ? "Past Meetings" : titleCase(view);
   if (view === "reports") {
     renderReports();
+  }
+  if (view === "history") {
+    renderMeetingHistory();
   }
   if (options.focus === false) {
     return;
@@ -621,6 +632,9 @@ function switchView(view, options = {}) {
   }
   if (view === "motions") {
     document.getElementById("motionTitle").focus();
+  }
+  if (view === "history") {
+    els.meetingHistorySearch.focus();
   }
 }
 
@@ -923,6 +937,131 @@ function renderMeetingActions() {
       </article>
     `;
   }, "No meeting actions drafted yet.");
+}
+
+function renderMeetingHistory() {
+  const query = (els.meetingHistorySearch.value || "").trim().toLowerCase();
+  const meetings = state.meetings
+    .map((meeting, index) => ({ meeting, index }))
+    .filter(({ meeting }) => {
+      if (!query) return true;
+      return [meeting.title, meeting.date, meeting.attendees, meeting.agenda, meeting.minutes, meeting.transcript]
+        .join(" ")
+        .toLowerCase()
+        .includes(query);
+    })
+    .sort((first, second) => {
+      const dateOrder = String(second.meeting.date || "").localeCompare(String(first.meeting.date || ""));
+      return dateOrder || second.index - first.index;
+    })
+    .map(({ meeting }) => meeting);
+
+  if (!meetings.some((meeting) => meeting.id === selectedMeetingId)) {
+    selectedMeetingId = meetings[0]?.id || "";
+  }
+
+  if (!meetings.length) {
+    els.meetingHistoryList.innerHTML = `
+      <div class="empty-state">
+        <strong>${query ? "No meetings found" : "No saved meetings"}</strong>
+        <span>${query ? "Try a different search." : "Saved meeting minutes will appear here."}</span>
+      </div>
+    `;
+    els.meetingHistoryDetail.innerHTML = "";
+    return;
+  }
+
+  els.meetingHistoryList.innerHTML = meetings.map((meeting) => {
+    const actionCount = Array.isArray(meeting.actionIds) ? meeting.actionIds.length : 0;
+    const attendees = meeting.attendees ? escapeHtml(meeting.attendees) : "No attendees recorded";
+    const isSelected = meeting.id === selectedMeetingId;
+    return `
+      <button class="meeting-history-item${isSelected ? " is-selected" : ""}" type="button" data-history-meeting-id="${escapeHtml(meeting.id)}" aria-current="${isSelected ? "true" : "false"}">
+        <strong>${escapeHtml(meeting.title || "Board Meeting")}</strong>
+        <span>${formatDate(meeting.date)}</span>
+        <small>${attendees}</small>
+        <small>${actionCount} ${actionCount === 1 ? "linked action" : "linked actions"}</small>
+      </button>
+    `;
+  }).join("");
+
+  const selectedMeeting = meetings.find((meeting) => meeting.id === selectedMeetingId);
+  renderMeetingHistoryDetail(selectedMeeting);
+}
+
+function renderMeetingHistoryDetail(meeting) {
+  if (!meeting) {
+    els.meetingHistoryDetail.innerHTML = "";
+    return;
+  }
+
+  const actionCount = Array.isArray(meeting.actionIds) ? meeting.actionIds.length : 0;
+  const agenda = meeting.agenda?.trim() || "No agenda recorded.";
+  const minutes = meeting.minutes?.trim() || "No minutes recorded.";
+  const transcript = meeting.transcript?.trim() || "No transcript recorded.";
+
+  els.meetingHistoryDetail.innerHTML = `
+    <header class="meeting-history-detail-header">
+      <div>
+        <h4>${escapeHtml(meeting.title || "Board Meeting")}</h4>
+        <p>${formatDate(meeting.date)}</p>
+      </div>
+      <div class="button-row meeting-history-actions">
+        ${actionCount ? `<button class="ghost-button" type="button" data-history-action="tasks" data-history-meeting-id="${escapeHtml(meeting.id)}">View tasks</button>` : ""}
+        <button class="secondary-button" type="button" data-history-action="copy" data-history-meeting-id="${escapeHtml(meeting.id)}">Copy minutes</button>
+        <button class="ghost-button" type="button" data-history-action="print" data-history-meeting-id="${escapeHtml(meeting.id)}">Print</button>
+      </div>
+    </header>
+
+    <dl class="meeting-history-meta">
+      <div><dt>Attendees</dt><dd>${escapeHtml(meeting.attendees || "Not recorded")}</dd></div>
+      <div><dt>Linked actions</dt><dd>${actionCount}</dd></div>
+    </dl>
+
+    <section class="meeting-history-section">
+      <h5>Agenda</h5>
+      <pre>${escapeHtml(agenda)}</pre>
+    </section>
+
+    <section class="meeting-history-section meeting-history-minutes">
+      <h5>Minutes</h5>
+      <pre>${escapeHtml(minutes)}</pre>
+    </section>
+
+    <details class="meeting-history-transcript">
+      <summary>Transcript</summary>
+      <pre>${escapeHtml(transcript)}</pre>
+    </details>
+  `;
+}
+
+function handleMeetingHistoryClick(event) {
+  const actionButton = event.target.closest("[data-history-action]");
+  if (actionButton) {
+    const meeting = state.meetings.find((candidate) => candidate.id === actionButton.dataset.historyMeetingId);
+    if (!meeting) return;
+
+    if (actionButton.dataset.historyAction === "copy") {
+      copyText(meeting.minutes, "Minutes copied.");
+      return;
+    }
+    if (actionButton.dataset.historyAction === "print") {
+      document.body.classList.add("is-printing-meeting");
+      window.print();
+      window.setTimeout(() => document.body.classList.remove("is-printing-meeting"), 0);
+      return;
+    }
+    if (actionButton.dataset.historyAction === "tasks") {
+      applyTaskQuickFilter(`meeting:${meeting.id}`);
+      switchView("tasks", { focus: false });
+    }
+    return;
+  }
+
+  const meetingButton = event.target.closest("[data-history-meeting-id]");
+  if (!meetingButton) return;
+  selectedMeetingId = meetingButton.dataset.historyMeetingId;
+  renderMeetingHistory();
 }
 
 function renderMotions() {
@@ -1851,6 +1990,7 @@ function saveMeeting() {
   });
 
   state.meetingDraftActions = [];
+  selectedMeetingId = meetingId;
   taskQuickFilter = `meeting:${meetingId}`;
   saveState();
   clearMeetingDraft();
