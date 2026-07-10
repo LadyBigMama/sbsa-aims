@@ -103,8 +103,6 @@ const MAX_TRANSCRIPTION_AUDIO_BYTES = 25 * 1024 * 1024;
 let state = loadState();
 let activeView = "dashboard";
 let taskQuickFilter = "all";
-let speechRecognition = null;
-let dictationStopRequested = false;
 let mediaRecorder = null;
 let recordingStream = null;
 let recordedAudioSegments = [];
@@ -199,9 +197,6 @@ function bindEvents() {
   document.getElementById("copyMinutesButton").addEventListener("click", () => copyText(els.meetingMinutes.value, "Minutes copied."));
   els.recordingButton.addEventListener("click", toggleAudioRecording);
   els.transcribeRecordingButton.addEventListener("click", transcribeRecordedAudio);
-  document.getElementById("startTranscriptButton").addEventListener("click", startDictation);
-  document.getElementById("checkMicButton").addEventListener("click", checkMicrophone);
-  document.getElementById("stopTranscriptButton").addEventListener("click", stopDictation);
   els.meetingActionForm.addEventListener("submit", addMeetingActionFromForm);
   els.meetingActionList.addEventListener("click", handleMeetingActionClick);
 
@@ -1999,19 +1994,6 @@ function meetingActionText(action) {
   return [action.title, action.sourceLine, action.expectedOutcome].filter(Boolean).join(" ");
 }
 
-function formatTranscriptLine(text) {
-  const cleanText = text.trim();
-  if (!cleanText) return "";
-  return cleanSentence(cleanText);
-}
-
-function appendTranscriptLine(baseText, line) {
-  const cleanBase = (baseText || "").trim();
-  const cleanLine = (line || "").trim();
-  if (!cleanLine) return cleanBase;
-  return cleanBase ? `${cleanBase}\n${cleanLine}` : cleanLine;
-}
-
 function appendTranscriptBlock(baseText, block) {
   const cleanBase = (baseText || "").trim();
   const cleanBlock = (block || "").trim();
@@ -2023,10 +2005,6 @@ async function startAudioRecording() {
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
     showMicNotice("Audio recording is not supported in this browser.", "Open the online page in Chrome, Edge, or Safari, or paste a transcript into the notes box.");
     return;
-  }
-
-  if (speechRecognition) {
-    stopDictation();
   }
 
   try {
@@ -2143,7 +2121,7 @@ function finishAudioRecording() {
   setRecordingButtons(hasAudio ? "ready" : "idle");
 
   if (!hasAudio) {
-    showMicNotice("No audio was captured.", "Click Check mic, confirm microphone access, and try recording again. Safari may also require microphone access in Website Settings.");
+    showMicNotice("No audio was captured.", "Confirm microphone access in the browser's website settings, then try recording again.");
     return;
   }
 
@@ -2180,7 +2158,7 @@ function handleAudioRecordingFailure(error) {
 async function transcribeRecordedAudio() {
   const segments = recordedAudioSegments.filter((segment) => segment.size);
   if (!segments.length) {
-    showToast("Record audio before transcribing.");
+    showToast("Record the meeting before transcribing.");
     return;
   }
 
@@ -2350,93 +2328,6 @@ function formatDuration(totalSeconds) {
   return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
 }
 
-async function startDictation() {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) {
-    showMicNotice("Dictation is not supported in this browser.", "Open this page in Chrome or Safari, or paste a transcript into the notes box.");
-    return;
-  }
-
-  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-    try {
-      const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      micStream.getTracks().forEach((track) => track.stop());
-    } catch (error) {
-      showMicNotice("Microphone permission was not allowed.", "Allow microphone access for this browser in macOS Privacy & Security settings, then reload the page. If you are using the Codex in-app browser, open http://localhost:8000/ in Chrome or Safari instead.");
-      return;
-    }
-  }
-
-  dictationStopRequested = false;
-  speechRecognition = new SpeechRecognition();
-  speechRecognition.continuous = true;
-  speechRecognition.interimResults = true;
-  speechRecognition.lang = "en-US";
-
-  let committedText = els.meetingTranscript.value.trim();
-
-  speechRecognition.onresult = (event) => {
-    let interim = "";
-    for (let index = event.resultIndex; index < event.results.length; index += 1) {
-      const transcript = event.results[index][0].transcript.trim();
-      if (event.results[index].isFinal) {
-        committedText = appendTranscriptLine(committedText, formatTranscriptLine(transcript));
-      } else {
-        interim = formatTranscriptLine(transcript);
-      }
-    }
-    els.meetingTranscript.value = appendTranscriptLine(committedText, interim);
-  };
-
-  speechRecognition.onerror = (event) => {
-    if (dictationStopRequested || event.error === "aborted") {
-      return;
-    }
-
-    if (event.error === "not-allowed" || event.error === "service-not-allowed") {
-      showMicNotice("Microphone access is blocked.", "Allow microphone access for this browser, reload the page, and try again. You can still paste notes or a transcript into the meeting box.");
-      stopDictation();
-      return;
-    }
-
-    showToast("Dictation stopped.");
-    stopDictation();
-  };
-
-  speechRecognition.onend = () => {
-    document.getElementById("startTranscriptButton").disabled = false;
-    document.getElementById("stopTranscriptButton").disabled = true;
-    speechRecognition = null;
-  };
-
-  speechRecognition.start();
-  document.getElementById("startTranscriptButton").disabled = true;
-  document.getElementById("stopTranscriptButton").disabled = false;
-  clearMicNotice();
-  showToast("Dictation started.");
-}
-
-async function checkMicrophone() {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  const hasMediaDevices = Boolean(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
-
-  if (!hasMediaDevices) {
-    showMicNotice("This browser is not exposing microphone devices to the page.", "Open the online page in Chrome, Edge, or Safari. You can still paste a transcript into the notes box.");
-    return;
-  }
-
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    stream.getTracks().forEach((track) => track.stop());
-    showMicNotice(
-      "Microphone access is available.",
-      SpeechRecognition ? "Use Record audio for better transcription, or Live dictation for a quick fallback." : "Use Record audio for transcription, or paste notes into the transcript box."
-    );
-  } catch (error) {
-    showMicNotice("Microphone access is blocked.", "Allow microphone access for this browser, reload the page, and try again.");
-  }
-}
-
 function showMicNotice(title, body) {
   els.micNotice.hidden = false;
   els.micNotice.innerHTML = `<strong>${escapeHtml(title)}</strong><span>${escapeHtml(body)}</span>`;
@@ -2446,16 +2337,6 @@ function showMicNotice(title, body) {
 function clearMicNotice() {
   els.micNotice.hidden = true;
   els.micNotice.innerHTML = "";
-}
-
-function stopDictation() {
-  dictationStopRequested = true;
-  clearMicNotice();
-  if (speechRecognition) {
-    speechRecognition.stop();
-  }
-  document.getElementById("startTranscriptButton").disabled = false;
-  document.getElementById("stopTranscriptButton").disabled = true;
 }
 
 function handleReminderClick(event) {
