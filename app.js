@@ -98,7 +98,6 @@ const DEFAULT_DIRECTOR_PLACEHOLDER_NAMES = new Set([
 ]);
 
 const RECORDING_SEGMENT_MS = 8 * 60 * 1000;
-const RECORDING_AUDIO_BITS_PER_SECOND = 48_000;
 const MAX_TRANSCRIPTION_AUDIO_BYTES = 25 * 1024 * 1024;
 
 let state = loadState();
@@ -112,6 +111,7 @@ let recordedAudioSegments = [];
 let recordingMimeType = "";
 let recordingSegmentTimer = null;
 let recordingStopRequested = false;
+let recordingFailed = false;
 let recordingStartedAt = 0;
 let toastTimer = null;
 let cloudLastUpdatedAt = "";
@@ -2050,8 +2050,17 @@ async function startAudioRecording() {
   recordedAudioSegments = [];
   recordingMimeType = getSupportedRecordingMimeType();
   recordingStopRequested = false;
+  recordingFailed = false;
   recordingStartedAt = Date.now();
-  startRecordingSegment();
+
+  try {
+    startRecordingSegment();
+  } catch (error) {
+    console.warn("Unable to start audio recording.", error);
+    handleAudioRecordingFailure(error);
+    return;
+  }
+
   setRecordingButtons("recording");
   showMicNotice("Recording in progress.", "Voices are separated automatically. Named labels are most reliable when participants identify themselves; later parts of long meetings may use Speaker A/B labels.");
   showToast("Recording started.");
@@ -2061,21 +2070,7 @@ function startRecordingSegment() {
   if (!recordingStream || recordingStopRequested) return;
 
   const chunks = [];
-  const options = {
-    audioBitsPerSecond: RECORDING_AUDIO_BITS_PER_SECOND
-  };
-  if (recordingMimeType) {
-    options.mimeType = recordingMimeType;
-  }
-
-  try {
-    mediaRecorder = new MediaRecorder(recordingStream, options);
-  } catch (error) {
-    console.warn("Falling back to browser recording defaults.", error);
-    mediaRecorder = recordingMimeType
-      ? new MediaRecorder(recordingStream, { mimeType: recordingMimeType })
-      : new MediaRecorder(recordingStream);
-  }
+  mediaRecorder = createMediaRecorder(recordingStream, recordingMimeType);
 
   const recorder = mediaRecorder;
   recorder.addEventListener("dataavailable", (event) => {
@@ -2085,6 +2080,8 @@ function startRecordingSegment() {
   });
 
   recorder.addEventListener("stop", () => {
+    if (recordingFailed) return;
+
     clearRecordingSegmentTimer();
     const audioType = recorder.mimeType || recordingMimeType || "audio/webm";
     const segment = new Blob(chunks, { type: audioType });
@@ -2097,10 +2094,22 @@ function startRecordingSegment() {
       return;
     }
 
-    startRecordingSegment();
+    try {
+      startRecordingSegment();
+    } catch (error) {
+      console.warn("Unable to start the next audio segment.", error);
+      handleAudioRecordingFailure(error);
+    }
   }, { once: true });
 
-  recorder.start(1000);
+  recorder.addEventListener("error", (event) => {
+    console.warn("Audio recording failed.", event.error || event);
+    handleAudioRecordingFailure(event.error || new Error("The browser stopped recording audio."));
+  }, { once: true });
+
+  // Safari is more reliable when it emits one complete file on stop instead
+  // of receiving a timeslice that requests partial media fragments.
+  recorder.start();
   recordingSegmentTimer = setTimeout(() => {
     if (recorder.state !== "inactive") {
       recorder.stop();
@@ -2109,9 +2118,12 @@ function startRecordingSegment() {
 }
 
 function stopAudioRecording() {
+  if (recordingFailed) return;
+
   recordingStopRequested = true;
   clearRecordingSegmentTimer();
   if (mediaRecorder && mediaRecorder.state !== "inactive") {
+    setRecordingButtons("stopping");
     mediaRecorder.stop();
   } else {
     finishAudioRecording();
@@ -2122,9 +2134,40 @@ function finishAudioRecording() {
   stopRecordingStream();
   const hasAudio = recordedAudioSegments.some((segment) => segment.size);
   setRecordingButtons(hasAudio ? "ready" : "idle");
+
+  if (!hasAudio) {
+    showMicNotice("No audio was captured.", "Click Check mic, confirm microphone access, and try recording again. Safari may also require microphone access in Website Settings.");
+    return;
+  }
+
   const seconds = Math.max(1, Math.round((Date.now() - recordingStartedAt) / 1000));
   const partLabel = recordedAudioSegments.length === 1 ? "1 part" : `${recordedAudioSegments.length} parts`;
   showMicNotice("Recording ready.", `Recorded ${formatDuration(seconds)} in ${partLabel}. Click Transcribe when ready.`);
+}
+
+function createMediaRecorder(stream, mimeType) {
+  if (!mimeType) {
+    return new MediaRecorder(stream);
+  }
+
+  try {
+    return new MediaRecorder(stream, { mimeType });
+  } catch (error) {
+    console.warn(`The browser rejected ${mimeType}; using its default recording format.`, error);
+    recordingMimeType = "";
+    return new MediaRecorder(stream);
+  }
+}
+
+function handleAudioRecordingFailure(error) {
+  if (recordingFailed) return;
+
+  recordingFailed = true;
+  recordingStopRequested = true;
+  recordedAudioSegments = [];
+  stopRecordingStream();
+  setRecordingButtons("idle");
+  showMicNotice("Recording could not start.", error?.message || "Check microphone access, reload the page, and try again.");
 }
 
 async function transcribeRecordedAudio() {
@@ -2244,9 +2287,10 @@ function clearRecordingSegmentTimer() {
 }
 
 function setRecordingButtons(mode) {
-  els.startRecordingButton.disabled = mode === "recording" || mode === "transcribing";
+  const busy = mode === "recording" || mode === "stopping" || mode === "transcribing";
+  els.startRecordingButton.disabled = busy;
   els.stopRecordingButton.disabled = mode !== "recording";
-  els.transcribeRecordingButton.disabled = !recordedAudioSegments.length || mode === "recording" || mode === "transcribing";
+  els.transcribeRecordingButton.disabled = !recordedAudioSegments.length || busy;
 }
 
 function getTranscriptSpeakerNames() {
