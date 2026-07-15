@@ -118,22 +118,24 @@ button {
   display: inline-grid;
   place-items: center;
   padding: 0;
-  color: var(--muted);
-  background: var(--surface);
-  border: 1px solid var(--strong-line);
+  color: #ffffff;
+  background: var(--red);
+  border: 1px solid var(--red);
   border-radius: 50%;
+  box-shadow: 0 0 0 4px rgba(179, 58, 58, 0.12);
 }
 
 .record-toggle-button:hover {
-  color: var(--ink);
-  border-color: var(--ink);
+  color: #ffffff;
+  background: #8f2d2d;
+  border-color: #8f2d2d;
 }
 
 .record-toggle-button.is-recording {
   color: #ffffff;
-  background: var(--red);
-  border-color: var(--red);
-  box-shadow: 0 0 0 4px rgba(179, 58, 58, 0.16);
+  background: #8f2d2d;
+  border-color: #8f2d2d;
+  box-shadow: 0 0 0 4px rgba(179, 58, 58, 0.22);
 }
 
 .record-toggle-button:disabled {
@@ -142,14 +144,19 @@ button {
 }
 
 .reset-meeting-button {
-  color: var(--red);
-  border-color: rgba(179, 58, 58, 0.3);
+  min-height: 32px;
+  padding: 5px 9px;
+  color: #ffffff;
+  background: var(--red);
+  border-color: var(--red);
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .reset-meeting-button:hover {
   color: #ffffff;
-  background: var(--red);
-  border-color: var(--red);
+  background: #8f2d2d;
+  border-color: #8f2d2d;
 }
 
 .record-symbol {
@@ -158,6 +165,26 @@ button {
   display: block;
   background: currentColor;
   border-radius: 50%;
+}
+
+.record-toggle-button.is-recording .record-symbol {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: transparent;
+  border-radius: 0;
+}
+
+.record-toggle-button.is-recording .record-symbol::before,
+.record-toggle-button.is-recording .record-symbol::after {
+  content: "";
+  width: 5px;
+  height: 16px;
+  background: currentColor;
+  border-radius: 2px;
 }
 
 .brand h1,
@@ -1444,6 +1471,10 @@ button:focus-visible,
 
   .button-row > .record-toggle-button {
     flex: 0 0 40px;
+  }
+
+  .button-row > .reset-meeting-button {
+    flex: 0 0 auto;
   }
 }
 
