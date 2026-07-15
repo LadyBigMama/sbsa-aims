@@ -678,10 +678,30 @@ label {
   box-shadow: 0 8px 24px rgba(31, 41, 51, 0.12);
 }
 
+.pdf-preview-frame {
+  width: 100%;
+  min-height: min(72vh, 720px);
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
 .pdf-preview-loading {
   padding: 20px;
   color: var(--muted);
   text-align: center;
+}
+
+.pdf-preview-unavailable {
+  display: grid;
+  gap: 4px;
+  padding: 20px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.pdf-preview-unavailable strong {
+  color: var(--ink);
 }
 
 .financials-text-details {

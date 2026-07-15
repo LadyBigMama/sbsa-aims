@@ -2,6 +2,9 @@ const STORAGE_KEY = "sbsa-aims-board-action-tracker-v1";
 const MEETING_DRAFT_KEY = "sbsa-aims-meeting-draft-v1";
 const CLOUD_TABLE = "board_state";
 const CLOUD_CONFIG = window.SBSA_SUPABASE_CONFIG || {};
+const FINANCIALS_PDF_DB = "sbsa-aims-financial-pdfs-v1";
+const FINANCIALS_PDF_STORE = "financialPdfs";
+const FINANCIALS_PDF_INLINE_MAX_BYTES = 900 * 1024;
 
 const defaultState = {
   directors: [
@@ -128,6 +131,7 @@ let cloudApplyingState = false;
 let cloudPollTimer = null;
 let financialsPdfObjectUrl = "";
 let financialsPdfAttachment = null;
+let financialsPdfDbPromise = null;
 
 const els = {
   viewTitle: document.getElementById("viewTitle"),
@@ -351,13 +355,17 @@ function normalizeFinancialsPdfAttachment(attachment) {
   if (!attachment || typeof attachment !== "object") return null;
 
   const dataUrl = String(attachment.dataUrl || "");
-  if (!dataUrl.startsWith("data:")) return null;
+  const id = String(attachment.id || "").trim();
+  const hasDataUrl = dataUrl.startsWith("data:");
+  if (!id && !hasDataUrl) return null;
 
   return {
+    id,
     name: String(attachment.name || "Financials.pdf").trim() || "Financials.pdf",
     type: String(attachment.type || "application/pdf").trim() || "application/pdf",
     size: Number.isFinite(Number(attachment.size)) ? Number(attachment.size) : 0,
-    dataUrl
+    dataUrl: hasDataUrl ? dataUrl : "",
+    storedInBrowser: Boolean(attachment.storedInBrowser || id)
   };
 }
 
@@ -3096,31 +3104,38 @@ async function createFallbackFinancialsPdfAttachment(file) {
 }
 
 async function createFinancialsPdfAttachment(file) {
-  return {
+  const attachment = {
+    id: makeId("financials-pdf"),
     name: file.name || "Financials.pdf",
     type: file.type || "application/pdf",
     size: file.size || 0,
-    dataUrl: await readFileAsDataUrl(file)
+    dataUrl: "",
+    storedInBrowser: false
   };
+
+  attachment.storedInBrowser = await saveFinancialsPdfToBrowser(attachment.id, file);
+  if (file.size <= FINANCIALS_PDF_INLINE_MAX_BYTES || !attachment.storedInBrowser) {
+    attachment.dataUrl = await readFileAsDataUrl(file);
+  }
+
+  return attachment;
 }
 
 function setFinancialsPdfPreview(source) {
   clearFinancialsPdfPreview({ keepAttachment: true });
-  const pdfBlob = getFinancialsPdfBlob(source);
   const pdfName = getFinancialsPdfName(source);
-  financialsPdfObjectUrl = URL.createObjectURL(pdfBlob);
   els.meetingFinancials.hidden = true;
   els.financialsPdfPreview.hidden = false;
   els.financialsPdfPreview.innerHTML = `
     <div class="pdf-preview-header">
       <strong>${escapeHtml(pdfName)}</strong>
-      <a class="text-button" href="${escapeAttribute(financialsPdfObjectUrl)}" target="_blank" rel="noopener">Open PDF</a>
+      <a class="text-button" href="#" target="_blank" rel="noopener" data-current-financials-open hidden>Open PDF</a>
     </div>
     <div class="pdf-preview-pages" data-pdf-pages>
       <div class="pdf-preview-loading">Loading PDF preview...</div>
     </div>
   `;
-  renderFinancialsPdfPages(pdfBlob);
+  renderFinancialsPdfPages(source);
 }
 
 function clearFinancialsPdfPreview(options = {}) {
@@ -3135,6 +3150,7 @@ function clearFinancialsPdfPreview(options = {}) {
     els.meetingFinancials.hidden = false;
   }
   if (els.financialsPdfPreview) {
+    els.financialsPdfPreview.querySelectorAll("[data-pdf-object-url]").forEach(revokeContainerPdfUrl);
     els.financialsPdfPreview.hidden = true;
     els.financialsPdfPreview.innerHTML = "";
   }
@@ -3143,18 +3159,33 @@ function clearFinancialsPdfPreview(options = {}) {
 async function renderFinancialsPdfPages(source) {
   const pagesContainer = els.financialsPdfPreview.querySelector("[data-pdf-pages]");
   if (!pagesContainer) return;
-  await renderPdfIntoContainer(source, pagesContainer);
+  try {
+    const pdfBlob = await getFinancialsPdfBlob(source);
+    setCurrentFinancialsOpenLink(pdfBlob);
+    await renderPdfIntoContainer(pdfBlob, pagesContainer);
+  } catch (error) {
+    console.warn(error);
+    renderMissingPdfMessage(pagesContainer);
+  }
 }
 
 async function renderStoredFinancialsPdf(attachment) {
   const pagesContainer = els.meetingHistoryDetail.querySelector("[data-history-financials-pdf]");
   if (!pagesContainer) return;
-  await renderPdfIntoContainer(attachment, pagesContainer);
+  try {
+    await renderPdfIntoContainer(await getFinancialsPdfBlob(attachment), pagesContainer);
+  } catch (error) {
+    console.warn(error);
+    renderMissingPdfMessage(pagesContainer);
+  }
 }
 
 async function renderPdfIntoContainer(source, pagesContainer) {
+  revokeContainerPdfUrl(pagesContainer);
+  const pdfBlob = source instanceof Blob ? source : await getFinancialsPdfBlob(source);
+
   try {
-    const pdf = await loadPdfDocument(source);
+    const pdf = await loadPdfDocument(pdfBlob);
     pagesContainer.innerHTML = "";
 
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
@@ -3183,7 +3214,50 @@ async function renderPdfIntoContainer(source, pagesContainer) {
     }
   } catch (error) {
     console.warn(error);
-    pagesContainer.innerHTML = `<div class="pdf-preview-loading">PDF preview could not be rendered. Use Open PDF to view it.</div>`;
+    renderPdfFrameFallback(pdfBlob, pagesContainer);
+  }
+}
+
+function setCurrentFinancialsOpenLink(pdfBlob) {
+  if (financialsPdfObjectUrl) {
+    URL.revokeObjectURL(financialsPdfObjectUrl);
+  }
+
+  financialsPdfObjectUrl = URL.createObjectURL(pdfBlob);
+  const openLink = els.financialsPdfPreview.querySelector("[data-current-financials-open]");
+  if (!openLink) return;
+
+  openLink.href = financialsPdfObjectUrl;
+  openLink.hidden = false;
+}
+
+function renderPdfFrameFallback(pdfBlob, pagesContainer) {
+  const fallbackUrl = URL.createObjectURL(pdfBlob);
+  pagesContainer.dataset.pdfObjectUrl = fallbackUrl;
+  pagesContainer.innerHTML = `
+    <iframe
+      class="pdf-preview-frame"
+      title="Financials PDF preview"
+      src="${escapeAttribute(fallbackUrl)}#toolbar=0&navpanes=0&scrollbar=1"
+    ></iframe>
+  `;
+}
+
+function renderMissingPdfMessage(pagesContainer) {
+  revokeContainerPdfUrl(pagesContainer);
+  pagesContainer.innerHTML = `
+    <div class="pdf-preview-unavailable">
+      <strong>PDF not available in this browser.</strong>
+      <span>Upload the financials PDF again to restore the preview.</span>
+    </div>
+  `;
+}
+
+function revokeContainerPdfUrl(container) {
+  const objectUrl = container?.dataset?.pdfObjectUrl;
+  if (objectUrl) {
+    URL.revokeObjectURL(objectUrl);
+    delete container.dataset.pdfObjectUrl;
   }
 }
 
@@ -3278,17 +3352,30 @@ async function loadPdfDocument(file) {
     throw new Error("PDF reader is still loading. Wait a moment and try the upload again.");
   }
 
-  pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("vendor/pdfjs/pdf.worker.min.js?v=20260715-financials-pdf-persist", window.location.href).href;
+  const isLocalFilePage = window.location.protocol === "file:";
+  if (!isLocalFilePage) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("vendor/pdfjs/pdf.worker.min.js?v=20260715-pdf-fallback", window.location.href).href;
+  }
 
-  const buffer = await readFileAsArrayBuffer(getFinancialsPdfBlob(file));
-  return pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+  const buffer = await readFileAsArrayBuffer(await getFinancialsPdfBlob(file));
+  return pdfjsLib.getDocument({
+    data: new Uint8Array(buffer),
+    disableWorker: isLocalFilePage
+  }).promise;
 }
 
-function getFinancialsPdfBlob(source) {
+async function getFinancialsPdfBlob(source) {
   if (source instanceof Blob) return source;
   const attachment = normalizeFinancialsPdfAttachment(source);
   if (!attachment) {
     throw new Error("Financials PDF could not be loaded.");
+  }
+  if (attachment.id) {
+    const storedBlob = await loadFinancialsPdfFromBrowser(attachment.id);
+    if (storedBlob) return storedBlob;
+  }
+  if (!attachment.dataUrl) {
+    throw new Error("Financials PDF is not stored in this browser.");
   }
   return dataUrlToBlob(attachment.dataUrl, attachment.type);
 }
@@ -3376,6 +3463,72 @@ function readFileAsDataUrl(file) {
     reader.onload = () => resolve(String(reader.result || ""));
     reader.onerror = () => reject(new Error("PDF upload failed."));
     reader.readAsDataURL(file);
+  });
+}
+
+async function saveFinancialsPdfToBrowser(id, file) {
+  if (!id || typeof indexedDB === "undefined") return false;
+
+  try {
+    const db = await openFinancialsPdfDb();
+    await runFinancialsPdfStoreRequest(db, "readwrite", (store) => {
+      return store.put({
+        id,
+        name: file.name || "Financials.pdf",
+        type: file.type || "application/pdf",
+        size: file.size || 0,
+        blob: file,
+        savedAt: new Date().toISOString()
+      });
+    });
+    return true;
+  } catch (error) {
+    console.warn("Financials PDF could not be stored in this browser.", error);
+    return false;
+  }
+}
+
+async function loadFinancialsPdfFromBrowser(id) {
+  if (!id || typeof indexedDB === "undefined") return null;
+
+  try {
+    const db = await openFinancialsPdfDb();
+    const record = await runFinancialsPdfStoreRequest(db, "readonly", (store) => store.get(id));
+    return record?.blob instanceof Blob ? record.blob : null;
+  } catch (error) {
+    console.warn("Financials PDF could not be loaded from this browser.", error);
+    return null;
+  }
+}
+
+function openFinancialsPdfDb() {
+  if (financialsPdfDbPromise) return financialsPdfDbPromise;
+
+  financialsPdfDbPromise = new Promise((resolve, reject) => {
+    const request = indexedDB.open(FINANCIALS_PDF_DB, 1);
+
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(FINANCIALS_PDF_STORE)) {
+        db.createObjectStore(FINANCIALS_PDF_STORE, { keyPath: "id" });
+      }
+    };
+
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("Could not open financials PDF storage."));
+  });
+
+  return financialsPdfDbPromise;
+}
+
+function runFinancialsPdfStoreRequest(db, mode, requestFactory) {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(FINANCIALS_PDF_STORE, mode);
+    const request = requestFactory(transaction.objectStore(FINANCIALS_PDF_STORE));
+
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("Financials PDF storage request failed."));
+    transaction.onerror = () => reject(transaction.error || new Error("Financials PDF storage failed."));
   });
 }
 
