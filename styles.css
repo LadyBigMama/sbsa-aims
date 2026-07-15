@@ -609,6 +609,64 @@ label {
   flex-wrap: wrap;
 }
 
+.pdf-preview {
+  display: grid;
+  gap: 8px;
+}
+
+.pdf-preview[hidden] {
+  display: none;
+}
+
+.pdf-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.pdf-preview-pages {
+  max-height: min(78vh, 760px);
+  display: grid;
+  gap: 14px;
+  overflow: auto;
+  padding: 12px;
+  background: #f8fafb;
+  border: 1px solid var(--strong-line);
+  border-radius: var(--radius);
+}
+
+.pdf-preview-page {
+  display: grid;
+  justify-content: center;
+}
+
+.pdf-preview-page canvas {
+  max-width: 100%;
+  height: auto !important;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 24px rgba(31, 41, 51, 0.12);
+}
+
+.pdf-preview-loading {
+  padding: 20px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.financials-text-details {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.financials-text-details summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
 .field-label {
   color: var(--muted);
   font-size: 13px;

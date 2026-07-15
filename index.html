@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>SBSA Board Action Tracker</title>
-    <link rel="stylesheet" href="styles.css?v=20260715-financials">
+    <link rel="stylesheet" href="styles.css?v=20260715-financials-pdf-persist">
   </head>
   <body>
     <div class="app-shell">
@@ -266,6 +266,7 @@
                   <input class="sr-only" id="financialsFile" type="file" accept=".pdf,.csv,.tsv,.txt,.md,.markdown,.rtf,.html,.htm,.docx,.doc,.pages,.xls,.xlsx,application/pdf,text/csv,text/tab-separated-values,text/plain,text/markdown,text/rtf,application/rtf,text/html,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
                 </div>
                 <textarea id="meetingFinancials" rows="5" placeholder="Treasurer report, balance, income, expenses, budget notes, or uploaded financial summary"></textarea>
+                <div class="pdf-preview" id="financialsPdfPreview" hidden></div>
               </div>
               <div class="field-group">
                 <span class="field-label">Transcript or notes</span>
@@ -509,8 +510,8 @@
       </div>
     </template>
 
-    <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-    <script src="supabase-config.js?v=20260715-financials"></script>
-    <script src="app.js?v=20260715-financials"></script>
+    <script src="vendor/pdfjs/pdf.min.js?v=20260715-financials-pdf-persist"></script>
+    <script src="supabase-config.js?v=20260715-financials-pdf-persist"></script>
+    <script src="app.js?v=20260715-financials-pdf-persist"></script>
   </body>
 </html>

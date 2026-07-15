@@ -126,6 +126,8 @@ let cloudSaveInFlight = false;
 let cloudPendingSave = false;
 let cloudApplyingState = false;
 let cloudPollTimer = null;
+let financialsPdfObjectUrl = "";
+let financialsPdfAttachment = null;
 
 const els = {
   viewTitle: document.getElementById("viewTitle"),
@@ -150,6 +152,7 @@ const els = {
   meetingFinancials: document.getElementById("meetingFinancials"),
   uploadFinancialsButton: document.getElementById("uploadFinancialsButton"),
   financialsFile: document.getElementById("financialsFile"),
+  financialsPdfPreview: document.getElementById("financialsPdfPreview"),
   meetingTranscript: document.getElementById("meetingTranscript"),
   meetingMinutes: document.getElementById("meetingMinutes"),
   meetingHistorySearch: document.getElementById("meetingHistorySearch"),
@@ -275,6 +278,7 @@ function saveMeetingDraft() {
     attendees: els.meetingAttendees.value,
     agenda: els.meetingAgenda.value,
     financials: els.meetingFinancials.value,
+    financialsPdf: financialsPdfAttachment,
     transcript: els.meetingTranscript.value,
     minutes: els.meetingMinutes.value,
     updatedAt: new Date().toISOString()
@@ -282,8 +286,10 @@ function saveMeetingDraft() {
 
   try {
     localStorage.setItem(MEETING_DRAFT_KEY, JSON.stringify(draft));
+    return true;
   } catch (error) {
     console.warn("Meeting draft could not be autosaved.", error);
+    return false;
   }
 }
 
@@ -298,6 +304,12 @@ function restoreMeetingDraft() {
     els.meetingAttendees.value = String(draft.attendees || "");
     els.meetingAgenda.value = String(draft.agenda || "");
     els.meetingFinancials.value = String(draft.financials || "");
+    financialsPdfAttachment = normalizeFinancialsPdfAttachment(draft.financialsPdf);
+    if (financialsPdfAttachment) {
+      setFinancialsPdfPreview(financialsPdfAttachment);
+    } else {
+      clearFinancialsPdfPreview();
+    }
     els.meetingTranscript.value = String(draft.transcript || "");
     els.meetingMinutes.value = String(draft.minutes || "");
 
@@ -318,13 +330,34 @@ function normalizeState(nextState) {
   return {
     directors: normalizeDirectors(nextState.directors),
     tasks: Array.isArray(nextState.tasks) ? nextState.tasks.map(normalizeTask) : [],
-    meetings: Array.isArray(nextState.meetings) ? nextState.meetings : [],
+    meetings: Array.isArray(nextState.meetings) ? nextState.meetings.map(normalizeMeeting) : [],
     meetingDraftActions: Array.isArray(nextState.meetingDraftActions) ? nextState.meetingDraftActions : [],
     motions: Array.isArray(nextState.motions) ? nextState.motions.map(normalizeMotion).filter(Boolean) : [],
     settings: {
       ...defaultState.settings,
       ...(nextState.settings || {})
     }
+  };
+}
+
+function normalizeMeeting(meeting) {
+  return {
+    ...meeting,
+    financialsPdf: normalizeFinancialsPdfAttachment(meeting?.financialsPdf)
+  };
+}
+
+function normalizeFinancialsPdfAttachment(attachment) {
+  if (!attachment || typeof attachment !== "object") return null;
+
+  const dataUrl = String(attachment.dataUrl || "");
+  if (!dataUrl.startsWith("data:")) return null;
+
+  return {
+    name: String(attachment.name || "Financials.pdf").trim() || "Financials.pdf",
+    type: String(attachment.type || "application/pdf").trim() || "application/pdf",
+    size: Number.isFinite(Number(attachment.size)) ? Number(attachment.size) : 0,
+    dataUrl
   };
 }
 
@@ -1009,8 +1042,25 @@ function renderMeetingHistoryDetail(meeting) {
   const actionCount = Array.isArray(meeting.actionIds) ? meeting.actionIds.length : 0;
   const agenda = meeting.agenda?.trim() || "No agenda recorded.";
   const financials = meeting.financials?.trim() || "No financials recorded.";
+  const financialsPdf = normalizeFinancialsPdfAttachment(meeting.financialsPdf);
   const minutes = meeting.minutes?.trim() || "No minutes recorded.";
   const transcript = meeting.transcript?.trim() || "No transcript recorded.";
+  const financialsMarkup = financialsPdf
+    ? `
+      <div class="pdf-preview">
+        <div class="pdf-preview-header">
+          <strong>${escapeHtml(financialsPdf.name)}</strong>
+        </div>
+        <div class="pdf-preview-pages" data-history-financials-pdf>
+          <div class="pdf-preview-loading">Loading PDF preview...</div>
+        </div>
+        <details class="financials-text-details">
+          <summary>Extracted financials text</summary>
+          <pre>${escapeHtml(financials)}</pre>
+        </details>
+      </div>
+    `
+    : `<pre>${escapeHtml(financials)}</pre>`;
 
   els.meetingHistoryDetail.innerHTML = `
     <header class="meeting-history-detail-header">
@@ -1037,7 +1087,7 @@ function renderMeetingHistoryDetail(meeting) {
 
     <section class="meeting-history-section">
       <h5>Financials</h5>
-      <pre>${escapeHtml(financials)}</pre>
+      ${financialsMarkup}
     </section>
 
     <section class="meeting-history-section meeting-history-minutes">
@@ -1050,6 +1100,10 @@ function renderMeetingHistoryDetail(meeting) {
       <pre>${escapeHtml(transcript)}</pre>
     </details>
   `;
+
+  if (financialsPdf) {
+    renderStoredFinancialsPdf(financialsPdf);
+  }
 }
 
 function handleMeetingHistoryClick(event) {
@@ -2012,6 +2066,7 @@ function saveMeeting() {
     attendees: els.meetingAttendees.value.trim(),
     agenda: els.meetingAgenda.value.trim(),
     financials: els.meetingFinancials.value.trim(),
+    financialsPdf: financialsPdfAttachment ? { ...financialsPdfAttachment } : null,
     transcript: els.meetingTranscript.value.trim(),
     minutes: els.meetingMinutes.value.trim(),
     actionIds
@@ -2301,6 +2356,7 @@ function resetCurrentMeeting() {
   els.meetingAttendees.value = "";
   els.meetingAgenda.value = "";
   els.meetingFinancials.value = "";
+  clearFinancialsPdfPreview();
   els.meetingTranscript.value = "";
   els.meetingMinutes.value = "";
   document.getElementById("meetingActionTitle").value = "";
@@ -2944,37 +3000,57 @@ function importAgendaFile(event) {
     });
 }
 
-function importFinancialsFile(event) {
+async function importFinancialsFile(event) {
   const file = event.target.files[0];
   if (!file) return;
+  const isPdf = isPdfFile(file);
+  const isReplacing = els.meetingFinancials.value.trim() || financialsPdfAttachment;
+  if (isReplacing && !confirm("Replace the current financials with the uploaded file?")) {
+    event.target.value = "";
+    return;
+  }
 
-  readFinancialsFile(file)
-    .then((text) => {
-      if (!text) {
-        showToast("Financials file was empty.");
+  try {
+    if (isPdf) {
+      financialsPdfAttachment = await createFinancialsPdfAttachment(file);
+      setFinancialsPdfPreview(financialsPdfAttachment);
+    }
+
+    const text = await readFinancialsFile(file);
+    if (!text) {
+      showToast("Financials file was empty.");
+      return;
+    }
+
+    els.meetingFinancials.value = text;
+    if (!isPdf) {
+      clearFinancialsPdfPreview();
+    }
+    const draftSaved = saveMeetingDraft();
+    showToast(draftSaved ? "Financials uploaded." : "Financials uploaded, but the PDF is too large to restore after refresh.");
+  } catch (error) {
+    console.warn(error);
+    if (isPdf) {
+      if (!financialsPdfAttachment) {
+        financialsPdfAttachment = await createFallbackFinancialsPdfAttachment(file);
+        setFinancialsPdfPreview(financialsPdfAttachment || file);
+      }
+      els.meetingFinancials.value = `Financials PDF uploaded: ${file.name}`;
+      const draftSaved = saveMeetingDraft();
+      if (!draftSaved) {
+        showToast("PDF shown, but it is too large to restore after refresh.");
         return;
       }
-
-      if (els.meetingFinancials.value.trim() && !confirm("Replace the current financials with the uploaded file?")) {
-        return;
-      }
-
-      els.meetingFinancials.value = text;
-      saveMeetingDraft();
-      showToast("Financials uploaded.");
-    })
-    .catch((error) => {
-      console.warn(error);
-      showToast(error.message || "Financials upload failed.");
-    })
-    .finally(() => {
-      event.target.value = "";
-    });
+    }
+    showToast(isPdf ? `PDF shown. ${error.message || "No readable text was found."}` : error.message || "Financials upload failed.");
+  } finally {
+    event.target.value = "";
+  }
 }
 
 async function readAgendaFile(file) {
   const fileName = file.name.toLowerCase();
-  if (fileName.endsWith(".pdf") || file.type === "application/pdf") {
+  if (isPdfFile(file)) {
     return cleanAgendaFileText(await readPdfText(file), file.name);
   }
 
@@ -2995,7 +3071,7 @@ async function readFinancialsFile(file) {
     throw new Error("Old .xls financials are not supported. Export them as .xlsx, CSV, or PDF and upload that file.");
   }
 
-  if (fileName.endsWith(".pdf") || file.type === "application/pdf") {
+  if (isPdfFile(file)) {
     return cleanFinancialsFileText(await readPdfText(file), file.name);
   }
 
@@ -3004,6 +3080,111 @@ async function readFinancialsFile(file) {
   }
 
   return cleanFinancialsFileText(await readFileAsText(file), file.name);
+}
+
+function isPdfFile(file) {
+  return file.name.toLowerCase().endsWith(".pdf") || file.type === "application/pdf";
+}
+
+async function createFallbackFinancialsPdfAttachment(file) {
+  try {
+    return await createFinancialsPdfAttachment(file);
+  } catch (error) {
+    console.warn("Financials PDF could not be saved for reload.", error);
+    return null;
+  }
+}
+
+async function createFinancialsPdfAttachment(file) {
+  return {
+    name: file.name || "Financials.pdf",
+    type: file.type || "application/pdf",
+    size: file.size || 0,
+    dataUrl: await readFileAsDataUrl(file)
+  };
+}
+
+function setFinancialsPdfPreview(source) {
+  clearFinancialsPdfPreview({ keepAttachment: true });
+  const pdfBlob = getFinancialsPdfBlob(source);
+  const pdfName = getFinancialsPdfName(source);
+  financialsPdfObjectUrl = URL.createObjectURL(pdfBlob);
+  els.meetingFinancials.hidden = true;
+  els.financialsPdfPreview.hidden = false;
+  els.financialsPdfPreview.innerHTML = `
+    <div class="pdf-preview-header">
+      <strong>${escapeHtml(pdfName)}</strong>
+      <a class="text-button" href="${escapeAttribute(financialsPdfObjectUrl)}" target="_blank" rel="noopener">Open PDF</a>
+    </div>
+    <div class="pdf-preview-pages" data-pdf-pages>
+      <div class="pdf-preview-loading">Loading PDF preview...</div>
+    </div>
+  `;
+  renderFinancialsPdfPages(pdfBlob);
+}
+
+function clearFinancialsPdfPreview(options = {}) {
+  if (financialsPdfObjectUrl) {
+    URL.revokeObjectURL(financialsPdfObjectUrl);
+  }
+  financialsPdfObjectUrl = "";
+  if (!options.keepAttachment) {
+    financialsPdfAttachment = null;
+  }
+  if (els.meetingFinancials) {
+    els.meetingFinancials.hidden = false;
+  }
+  if (els.financialsPdfPreview) {
+    els.financialsPdfPreview.hidden = true;
+    els.financialsPdfPreview.innerHTML = "";
+  }
+}
+
+async function renderFinancialsPdfPages(source) {
+  const pagesContainer = els.financialsPdfPreview.querySelector("[data-pdf-pages]");
+  if (!pagesContainer) return;
+  await renderPdfIntoContainer(source, pagesContainer);
+}
+
+async function renderStoredFinancialsPdf(attachment) {
+  const pagesContainer = els.meetingHistoryDetail.querySelector("[data-history-financials-pdf]");
+  if (!pagesContainer) return;
+  await renderPdfIntoContainer(attachment, pagesContainer);
+}
+
+async function renderPdfIntoContainer(source, pagesContainer) {
+  try {
+    const pdf = await loadPdfDocument(source);
+    pagesContainer.innerHTML = "";
+
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+      const page = await pdf.getPage(pageNumber);
+      const baseViewport = page.getViewport({ scale: 1 });
+      const availableWidth = Math.max(320, Math.min(pagesContainer.clientWidth || 760, 920) - 24);
+      const scale = Math.max(0.65, Math.min(1.4, availableWidth / baseViewport.width));
+      const viewport = page.getViewport({ scale });
+      const canvas = document.createElement("canvas");
+      const pageWrap = document.createElement("div");
+      const outputScale = window.devicePixelRatio || 1;
+
+      pageWrap.className = "pdf-preview-page";
+      canvas.style.width = `${viewport.width}px`;
+      canvas.style.height = `${viewport.height}px`;
+      canvas.width = Math.floor(viewport.width * outputScale);
+      canvas.height = Math.floor(viewport.height * outputScale);
+      pageWrap.appendChild(canvas);
+      pagesContainer.appendChild(pageWrap);
+
+      await page.render({
+        canvasContext: canvas.getContext("2d"),
+        viewport,
+        transform: outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null
+      }).promise;
+    }
+  } catch (error) {
+    console.warn(error);
+    pagesContainer.innerHTML = `<div class="pdf-preview-loading">PDF preview could not be rendered. Use Open PDF to view it.</div>`;
+  }
 }
 
 async function readXlsxText(file) {
@@ -3072,15 +3253,7 @@ function extractXlsxText(xml) {
 }
 
 async function readPdfText(file) {
-  const pdfjsLib = window.pdfjsLib;
-  if (!pdfjsLib?.getDocument) {
-    throw new Error("PDF reader is still loading. Wait a moment and try the upload again.");
-  }
-
-  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
-
-  const buffer = await readFileAsArrayBuffer(file);
-  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+  const pdf = await loadPdfDocument(file);
   const pages = [];
 
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
@@ -3097,6 +3270,50 @@ async function readPdfText(file) {
   }
 
   return pages.join("\n\n");
+}
+
+async function loadPdfDocument(file) {
+  const pdfjsLib = window.pdfjsLib;
+  if (!pdfjsLib?.getDocument) {
+    throw new Error("PDF reader is still loading. Wait a moment and try the upload again.");
+  }
+
+  pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("vendor/pdfjs/pdf.worker.min.js?v=20260715-financials-pdf-persist", window.location.href).href;
+
+  const buffer = await readFileAsArrayBuffer(getFinancialsPdfBlob(file));
+  return pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+}
+
+function getFinancialsPdfBlob(source) {
+  if (source instanceof Blob) return source;
+  const attachment = normalizeFinancialsPdfAttachment(source);
+  if (!attachment) {
+    throw new Error("Financials PDF could not be loaded.");
+  }
+  return dataUrlToBlob(attachment.dataUrl, attachment.type);
+}
+
+function getFinancialsPdfName(source) {
+  return String(source?.name || source?.fileName || "Financials.pdf").trim() || "Financials.pdf";
+}
+
+function dataUrlToBlob(dataUrl, fallbackType = "application/pdf") {
+  const commaIndex = dataUrl.indexOf(",");
+  if (commaIndex < 0) {
+    throw new Error("Financials PDF data is incomplete.");
+  }
+
+  const header = dataUrl.slice(0, commaIndex);
+  const payload = dataUrl.slice(commaIndex + 1);
+  const mimeType = header.match(/^data:([^;,]+)/i)?.[1] || fallbackType;
+  const binary = /;base64/i.test(header) ? atob(payload) : decodeURIComponent(payload);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return new Blob([bytes], { type: mimeType || fallbackType });
 }
 
 function textContentToLines(content) {
@@ -3150,6 +3367,15 @@ function readFileAsArrayBuffer(file) {
     reader.onload = () => resolve(reader.result);
     reader.onerror = () => reject(new Error("Agenda upload failed."));
     reader.readAsArrayBuffer(file);
+  });
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("PDF upload failed."));
+    reader.readAsDataURL(file);
   });
 }
 
