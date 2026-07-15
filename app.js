@@ -145,6 +145,11 @@ const els = {
   meetingTitle: document.getElementById("meetingTitle"),
   meetingAttendees: document.getElementById("meetingAttendees"),
   meetingAgenda: document.getElementById("meetingAgenda"),
+  uploadAgendaButton: document.getElementById("uploadAgendaButton"),
+  agendaFile: document.getElementById("agendaFile"),
+  meetingFinancials: document.getElementById("meetingFinancials"),
+  uploadFinancialsButton: document.getElementById("uploadFinancialsButton"),
+  financialsFile: document.getElementById("financialsFile"),
   meetingTranscript: document.getElementById("meetingTranscript"),
   meetingMinutes: document.getElementById("meetingMinutes"),
   meetingHistorySearch: document.getElementById("meetingHistorySearch"),
@@ -208,8 +213,12 @@ function bindEvents() {
   document.getElementById("draftMinutesButton").addEventListener("click", draftMinutes);
   document.getElementById("saveMeetingButton").addEventListener("click", saveMeeting);
   document.getElementById("copyMinutesButton").addEventListener("click", () => copyText(els.meetingMinutes.value, "Minutes copied."));
-  [els.meetingTitle, els.meetingDate, els.meetingAttendees, els.meetingAgenda, els.meetingTranscript, els.meetingMinutes]
+  [els.meetingTitle, els.meetingDate, els.meetingAttendees, els.meetingAgenda, els.meetingFinancials, els.meetingTranscript, els.meetingMinutes]
     .forEach((element) => element.addEventListener("input", saveMeetingDraft));
+  els.uploadAgendaButton.addEventListener("click", () => els.agendaFile.click());
+  els.agendaFile.addEventListener("change", importAgendaFile);
+  els.uploadFinancialsButton.addEventListener("click", () => els.financialsFile.click());
+  els.financialsFile.addEventListener("change", importFinancialsFile);
   els.recordingButton.addEventListener("click", toggleAudioRecording);
   els.transcribeRecordingButton.addEventListener("click", transcribeRecordedAudio);
   els.resetMeetingButton.addEventListener("click", resetCurrentMeeting);
@@ -265,6 +274,7 @@ function saveMeetingDraft() {
     date: els.meetingDate.value,
     attendees: els.meetingAttendees.value,
     agenda: els.meetingAgenda.value,
+    financials: els.meetingFinancials.value,
     transcript: els.meetingTranscript.value,
     minutes: els.meetingMinutes.value,
     updatedAt: new Date().toISOString()
@@ -287,6 +297,7 @@ function restoreMeetingDraft() {
     els.meetingDate.value = String(draft.date || els.meetingDate.value);
     els.meetingAttendees.value = String(draft.attendees || "");
     els.meetingAgenda.value = String(draft.agenda || "");
+    els.meetingFinancials.value = String(draft.financials || "");
     els.meetingTranscript.value = String(draft.transcript || "");
     els.meetingMinutes.value = String(draft.minutes || "");
 
@@ -945,7 +956,7 @@ function renderMeetingHistory() {
     .map((meeting, index) => ({ meeting, index }))
     .filter(({ meeting }) => {
       if (!query) return true;
-      return [meeting.title, meeting.date, meeting.attendees, meeting.agenda, meeting.minutes, meeting.transcript]
+      return [meeting.title, meeting.date, meeting.attendees, meeting.agenda, meeting.financials, meeting.minutes, meeting.transcript]
         .join(" ")
         .toLowerCase()
         .includes(query);
@@ -997,6 +1008,7 @@ function renderMeetingHistoryDetail(meeting) {
 
   const actionCount = Array.isArray(meeting.actionIds) ? meeting.actionIds.length : 0;
   const agenda = meeting.agenda?.trim() || "No agenda recorded.";
+  const financials = meeting.financials?.trim() || "No financials recorded.";
   const minutes = meeting.minutes?.trim() || "No minutes recorded.";
   const transcript = meeting.transcript?.trim() || "No transcript recorded.";
 
@@ -1021,6 +1033,11 @@ function renderMeetingHistoryDetail(meeting) {
     <section class="meeting-history-section">
       <h5>Agenda</h5>
       <pre>${escapeHtml(agenda)}</pre>
+    </section>
+
+    <section class="meeting-history-section">
+      <h5>Financials</h5>
+      <pre>${escapeHtml(financials)}</pre>
     </section>
 
     <section class="meeting-history-section meeting-history-minutes">
@@ -1912,6 +1929,7 @@ function draftMinutes() {
   const date = els.meetingDate.value || todayISO();
   const attendees = els.meetingAttendees.value.trim() || "Not recorded";
   const agenda = splitLines(els.meetingAgenda.value);
+  const financials = splitLines(els.meetingFinancials.value);
   const transcript = splitLines(els.meetingTranscript.value);
   const transcriptEntries = transcript.map((line) => ({
     raw: line,
@@ -1939,6 +1957,9 @@ function draftMinutes() {
     "",
     "## Agenda",
     agenda.length ? agenda.map((item) => `- ${item}`).join("\n") : "- Not recorded",
+    "",
+    "## Financials",
+    financials.length ? financials.map((item) => `- ${item}`).join("\n") : "- Not recorded",
     "",
     "## Discussion Summary",
     discussion.length ? discussion.map((item) => `- ${cleanSentence(item)}`).join("\n") : "- Discussion summary needs review.",
@@ -1990,6 +2011,7 @@ function saveMeeting() {
     date: els.meetingDate.value || todayISO(),
     attendees: els.meetingAttendees.value.trim(),
     agenda: els.meetingAgenda.value.trim(),
+    financials: els.meetingFinancials.value.trim(),
     transcript: els.meetingTranscript.value.trim(),
     minutes: els.meetingMinutes.value.trim(),
     actionIds
@@ -2278,6 +2300,7 @@ function resetCurrentMeeting() {
   els.meetingDate.value = todayISO();
   els.meetingAttendees.value = "";
   els.meetingAgenda.value = "";
+  els.meetingFinancials.value = "";
   els.meetingTranscript.value = "";
   els.meetingMinutes.value = "";
   document.getElementById("meetingActionTitle").value = "";
@@ -2872,7 +2895,8 @@ function buildBoardReport() {
 
   lines.push("", "Recent Meetings");
   state.meetings.slice(-5).reverse().forEach((meeting) => {
-    lines.push(`- ${meeting.title} | ${formatDate(meeting.date)} | Actions added: ${meeting.actionIds.length}`);
+    const financials = meeting.financials ? " | Financials attached" : "";
+    lines.push(`- ${meeting.title} | ${formatDate(meeting.date)} | Actions added: ${meeting.actionIds.length}${financials}`);
   });
 
   if (!state.meetings.length) {
@@ -2890,6 +2914,447 @@ function exportData() {
   link.download = `sbsa-board-action-export-${todayISO()}.json`;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function importAgendaFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  readAgendaFile(file)
+    .then((text) => {
+      if (!text) {
+        showToast("Agenda file was empty.");
+        return;
+      }
+
+      if (els.meetingAgenda.value.trim() && !confirm("Replace the current agenda with the uploaded file?")) {
+        return;
+      }
+
+      els.meetingAgenda.value = text;
+      saveMeetingDraft();
+      showToast("Agenda uploaded.");
+    })
+    .catch((error) => {
+      console.warn(error);
+      showToast(error.message || "Agenda upload failed.");
+    })
+    .finally(() => {
+      event.target.value = "";
+    });
+}
+
+function importFinancialsFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  readFinancialsFile(file)
+    .then((text) => {
+      if (!text) {
+        showToast("Financials file was empty.");
+        return;
+      }
+
+      if (els.meetingFinancials.value.trim() && !confirm("Replace the current financials with the uploaded file?")) {
+        return;
+      }
+
+      els.meetingFinancials.value = text;
+      saveMeetingDraft();
+      showToast("Financials uploaded.");
+    })
+    .catch((error) => {
+      console.warn(error);
+      showToast(error.message || "Financials upload failed.");
+    })
+    .finally(() => {
+      event.target.value = "";
+    });
+}
+
+async function readAgendaFile(file) {
+  const fileName = file.name.toLowerCase();
+  if (fileName.endsWith(".pdf") || file.type === "application/pdf") {
+    return cleanAgendaFileText(await readPdfText(file), file.name);
+  }
+
+  if (fileName.endsWith(".docx") || file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+    return cleanAgendaFileText(await readDocxText(file), file.name);
+  }
+
+  return cleanAgendaFileText(await readFileAsText(file), file.name);
+}
+
+async function readFinancialsFile(file) {
+  const fileName = file.name.toLowerCase();
+  if (fileName.endsWith(".xlsx")) {
+    return cleanFinancialsFileText(await readXlsxText(file), file.name);
+  }
+
+  if (fileName.endsWith(".xls")) {
+    throw new Error("Old .xls financials are not supported. Export them as .xlsx, CSV, or PDF and upload that file.");
+  }
+
+  if (fileName.endsWith(".pdf") || file.type === "application/pdf") {
+    return cleanFinancialsFileText(await readPdfText(file), file.name);
+  }
+
+  if (fileName.endsWith(".docx") || file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+    return cleanFinancialsFileText(await readDocxText(file), file.name);
+  }
+
+  return cleanFinancialsFileText(await readFileAsText(file), file.name);
+}
+
+async function readXlsxText(file) {
+  const buffer = await readFileAsArrayBuffer(file);
+  const entries = parseZipEntries(buffer);
+  const sharedStringsEntry = entries.find((entry) => entry.name === "xl/sharedStrings.xml");
+  const sharedStrings = sharedStringsEntry ? parseXlsxSharedStrings(await inflateZipEntry(sharedStringsEntry)) : [];
+  const sheetEntries = entries
+    .filter((entry) => /^xl\/worksheets\/sheet\d+\.xml$/i.test(entry.name))
+    .sort((first, second) => first.name.localeCompare(second.name, undefined, { numeric: true }));
+
+  if (!sheetEntries.length) {
+    throw new Error("Could not find worksheet data in that Excel file.");
+  }
+
+  const sheets = [];
+  for (const sheetEntry of sheetEntries) {
+    const rows = parseXlsxWorksheetRows(await inflateZipEntry(sheetEntry), sharedStrings);
+    if (rows.length) {
+      sheets.push(rows.map((row) => row.join(" | ")).join("\n"));
+    }
+  }
+
+  if (!sheets.length) {
+    throw new Error("No readable financial rows were found in that Excel file.");
+  }
+
+  return sheets.join("\n\n");
+}
+
+function parseXlsxSharedStrings(xml) {
+  return [...xml.matchAll(/<si[\s\S]*?<\/si>/gi)].map((match) => {
+    return extractXlsxText(match[0]);
+  });
+}
+
+function parseXlsxWorksheetRows(xml, sharedStrings) {
+  return [...xml.matchAll(/<row\b[\s\S]*?<\/row>/gi)]
+    .map((rowMatch) => {
+      return [...rowMatch[0].matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/gi)]
+        .map((cellMatch) => parseXlsxCell(cellMatch[1], cellMatch[2], sharedStrings))
+        .map((cell) => cell.trim())
+        .filter(Boolean);
+    })
+    .filter((row) => row.length);
+}
+
+function parseXlsxCell(attributes, body, sharedStrings) {
+  const type = attributes.match(/\bt="([^"]+)"/i)?.[1] || "";
+  if (type === "s") {
+    const index = Number(body.match(/<v[^>]*>([\s\S]*?)<\/v>/i)?.[1] || "");
+    return Number.isFinite(index) ? sharedStrings[index] || "" : "";
+  }
+
+  if (type === "inlineStr") {
+    return extractXlsxText(body);
+  }
+
+  return decodeXmlEntities(body.match(/<v[^>]*>([\s\S]*?)<\/v>/i)?.[1] || "");
+}
+
+function extractXlsxText(xml) {
+  return [...xml.matchAll(/<t[^>]*>([\s\S]*?)<\/t>/gi)]
+    .map((match) => decodeXmlEntities(match[1]))
+    .join("");
+}
+
+async function readPdfText(file) {
+  const pdfjsLib = window.pdfjsLib;
+  if (!pdfjsLib?.getDocument) {
+    throw new Error("PDF reader is still loading. Wait a moment and try the upload again.");
+  }
+
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+
+  const buffer = await readFileAsArrayBuffer(file);
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+  const pages = [];
+
+  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+    const page = await pdf.getPage(pageNumber);
+    const content = await page.getTextContent();
+    const text = textContentToLines(content);
+    if (text) {
+      pages.push(text);
+    }
+  }
+
+  if (!pages.length) {
+    throw new Error("No readable text was found in that PDF. If it is scanned, export or copy it as text first.");
+  }
+
+  return pages.join("\n\n");
+}
+
+function textContentToLines(content) {
+  const lines = [];
+  let currentLine = [];
+  let lastY = null;
+
+  content.items.forEach((item) => {
+    const text = String(item.str || "").trim();
+    const y = Array.isArray(item.transform) ? Math.round(item.transform[5]) : null;
+    const isNewLine = lastY !== null && y !== null && Math.abs(y - lastY) > 4;
+
+    if (isNewLine && currentLine.length) {
+      lines.push(currentLine.join(" "));
+      currentLine = [];
+    }
+
+    if (text) {
+      currentLine.push(text);
+    }
+
+    if (item.hasEOL && currentLine.length) {
+      lines.push(currentLine.join(" "));
+      currentLine = [];
+    }
+
+    if (y !== null) {
+      lastY = y;
+    }
+  });
+
+  if (currentLine.length) {
+    lines.push(currentLine.join(" "));
+  }
+
+  return lines.join("\n").trim();
+}
+
+function readFileAsText(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Agenda upload failed."));
+    reader.readAsText(file);
+  });
+}
+
+function readFileAsArrayBuffer(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("Agenda upload failed."));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+async function readDocxText(file) {
+  const buffer = await readFileAsArrayBuffer(file);
+  const entries = parseZipEntries(buffer);
+  const documentEntry = entries.find((entry) => entry.name === "word/document.xml");
+  if (!documentEntry) {
+    throw new Error("Could not find document text in that Word file.");
+  }
+
+  const xml = await inflateZipEntry(documentEntry);
+  return extractDocxParagraphs(xml).join("\n");
+}
+
+function parseZipEntries(buffer) {
+  const view = new DataView(buffer);
+  const bytes = new Uint8Array(buffer);
+  const entries = [];
+  const centralDirectoryOffset = findZipCentralDirectoryOffset(view);
+  let offset = centralDirectoryOffset;
+  const decoder = new TextDecoder();
+
+  while (offset < view.byteLength && view.getUint32(offset, true) === 0x02014b50) {
+    const compression = view.getUint16(offset + 10, true);
+    const compressedSize = view.getUint32(offset + 20, true);
+    const fileNameLength = view.getUint16(offset + 28, true);
+    const extraLength = view.getUint16(offset + 30, true);
+    const commentLength = view.getUint16(offset + 32, true);
+    const localHeaderOffset = view.getUint32(offset + 42, true);
+    const nameStart = offset + 46;
+    const name = decoder.decode(bytes.slice(nameStart, nameStart + fileNameLength));
+    const localNameLength = view.getUint16(localHeaderOffset + 26, true);
+    const localExtraLength = view.getUint16(localHeaderOffset + 28, true);
+    const dataStart = localHeaderOffset + 30 + localNameLength + localExtraLength;
+    const data = bytes.slice(dataStart, dataStart + compressedSize);
+
+    entries.push({ name, compression, data });
+    offset = nameStart + fileNameLength + extraLength + commentLength;
+  }
+
+  return entries;
+}
+
+function findZipCentralDirectoryOffset(view) {
+  for (let offset = view.byteLength - 22; offset >= 0; offset -= 1) {
+    if (view.getUint32(offset, true) === 0x06054b50) {
+      return view.getUint32(offset + 16, true);
+    }
+  }
+
+  throw new Error("That Word file could not be read.");
+}
+
+async function inflateZipEntry(entry) {
+  if (entry.compression === 0) {
+    return new TextDecoder().decode(entry.data);
+  }
+
+  if (entry.compression !== 8 || typeof DecompressionStream === "undefined") {
+    throw new Error("This browser cannot read that Word agenda. Save it as RTF or text and try again.");
+  }
+
+  const stream = new Blob([entry.data]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  return new TextDecoder().decode(await new Response(stream).arrayBuffer());
+}
+
+function extractDocxParagraphs(xml) {
+  return xml
+    .split(/<\/w:p>/i)
+    .map((paragraph) => {
+      return [...paragraph.matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/gi)]
+        .map((match) => decodeXmlEntities(match[1]))
+        .join("");
+    })
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+}
+
+function decodeXmlEntities(value) {
+  const textarea = document.createElement("textarea");
+  textarea.innerHTML = value;
+  return textarea.value;
+}
+
+function stripHtml(value) {
+  if (typeof DOMParser === "undefined") {
+    return value.replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>/gi, "\n").replace(/<[^>]+>/g, " ");
+  }
+
+  const doc = new DOMParser().parseFromString(value, "text/html");
+  return doc.body?.innerText || "";
+}
+
+function looksLikeHtml(value, fileName = "") {
+  const lowerName = fileName.toLowerCase();
+  return lowerName.endsWith(".html") || lowerName.endsWith(".htm") || /<\/?[a-z][\s\S]*>/i.test(value.trim());
+}
+
+function looksLikeRtf(value, fileName = "") {
+  return fileName.toLowerCase().endsWith(".rtf") || value.trim().startsWith("{\\rtf");
+}
+
+function stripUnsupportedBinaryText(value) {
+  return value.replace(/\u0000/g, "").trim();
+}
+
+function unsupportedBinaryAgendaMessage(value, fileName = "") {
+  const lowerName = fileName.toLowerCase();
+  if (lowerName.endsWith(".doc")) {
+    return "Old .doc agenda files are not supported. Save it as .docx, RTF, or text and try again.";
+  }
+
+  if (lowerName.endsWith(".pages")) {
+    return "Apple Pages agenda files are not supported. Export it as Word .docx, RTF, or text and try again.";
+  }
+
+  if (stripUnsupportedBinaryText(value).length < 8) {
+    return "That agenda file could not be read. Use Word .docx, RTF, Markdown, or text.";
+  }
+
+  return "";
+}
+
+function normalizeAgendaLines(value) {
+  return value
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function agendaUploadError(message) {
+  if (message) {
+    throw new Error(message);
+  }
+}
+
+function ensureReadableAgendaText(value, fileName = "") {
+  agendaUploadError(unsupportedBinaryAgendaMessage(value, fileName));
+  return value;
+}
+
+function cleanAgendaFileText(value, fileName = "") {
+  let text = ensureReadableAgendaText(value, fileName);
+  if (looksLikeRtf(text, fileName)) {
+    text = stripRtf(text);
+  } else if (looksLikeHtml(text, fileName)) {
+    text = stripHtml(text);
+  }
+
+  return normalizeAgendaLines(text);
+}
+
+function cleanFinancialsFileText(value, fileName = "") {
+  const lowerName = fileName.toLowerCase();
+  let text = ensureReadableFinancialsText(value, fileName);
+
+  if (looksLikeRtf(text, fileName)) {
+    text = stripRtf(text);
+  } else if (looksLikeHtml(text, fileName)) {
+    text = stripHtml(text);
+  }
+
+  if (lowerName.endsWith(".csv") || lowerName.endsWith(".tsv")) {
+    return normalizeDelimitedFinancials(text, lowerName.endsWith(".tsv") ? "\t" : ",");
+  }
+
+  return normalizeAgendaLines(text);
+}
+
+function ensureReadableFinancialsText(value, fileName = "") {
+  const lowerName = fileName.toLowerCase();
+  if (lowerName.endsWith(".doc")) {
+    throw new Error("Old .doc financial files are not supported. Save it as .docx, PDF, CSV, RTF, or text and try again.");
+  }
+
+  if (lowerName.endsWith(".pages")) {
+    throw new Error("Apple Pages financial files are not supported. Export it as Word .docx, PDF, RTF, or text and try again.");
+  }
+
+  agendaUploadError(unsupportedBinaryAgendaMessage(value, fileName));
+  return value;
+}
+
+function normalizeDelimitedFinancials(value, delimiter) {
+  return value
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.split(delimiter).map((cell) => cell.trim()).filter(Boolean).join(" | "))
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+}
+
+function stripRtf(value) {
+  return value
+    .replace(/\\'[0-9a-fA-F]{2}/g, " ")
+    .replace(/\\par[d]?/g, "\n")
+    .replace(/\\tab/g, " ")
+    .replace(/\\[a-zA-Z]+-?\d* ?/g, "")
+    .replace(/[{}]/g, "")
+    .replace(/\\\n/g, "\n");
 }
 
 function importData(event) {

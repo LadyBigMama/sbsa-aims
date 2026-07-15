@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>SBSA Board Action Tracker</title>
-    <link rel="stylesheet" href="styles.css?v=20260710-simple-menu">
+    <link rel="stylesheet" href="styles.css?v=20260715-financials">
   </head>
   <body>
     <div class="app-shell">
@@ -241,10 +241,32 @@
                   <input id="meetingAttendees" type="text" placeholder="Names or roles, separated by commas">
                 </label>
               </div>
-              <label>
-                Agenda
+              <div class="field-group">
+                <div class="field-header">
+                  <span class="field-label">Agenda</span>
+                  <button class="file-button compact-button" type="button" id="uploadAgendaButton">
+                    <span class="button-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24"><path d="M11 4h2v9l3.5-3.5 1.4 1.4L12 16.8l-5.9-5.9 1.4-1.4L11 13V4ZM5 18h14v2H5v-2Z"></path></svg>
+                    </span>
+                    Upload agenda
+                  </button>
+                  <input class="sr-only" id="agendaFile" type="file" accept=".txt,.md,.markdown,.rtf,.html,.htm,.docx,.doc,.pages,.pdf,text/plain,text/markdown,text/rtf,application/rtf,text/html,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf">
+                </div>
                 <textarea id="meetingAgenda" rows="5" placeholder="Membership, budget, flying sites, events, safety, old business, new business"></textarea>
-              </label>
+              </div>
+              <div class="field-group">
+                <div class="field-header">
+                  <span class="field-label">Financials</span>
+                  <button class="file-button compact-button" type="button" id="uploadFinancialsButton">
+                    <span class="button-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24"><path d="M11 4h2v9l3.5-3.5 1.4 1.4L12 16.8l-5.9-5.9 1.4-1.4L11 13V4ZM5 18h14v2H5v-2Z"></path></svg>
+                    </span>
+                    Upload financials
+                  </button>
+                  <input class="sr-only" id="financialsFile" type="file" accept=".pdf,.csv,.tsv,.txt,.md,.markdown,.rtf,.html,.htm,.docx,.doc,.pages,.xls,.xlsx,application/pdf,text/csv,text/tab-separated-values,text/plain,text/markdown,text/rtf,application/rtf,text/html,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+                </div>
+                <textarea id="meetingFinancials" rows="5" placeholder="Treasurer report, balance, income, expenses, budget notes, or uploaded financial summary"></textarea>
+              </div>
               <div class="field-group">
                 <span class="field-label">Transcript or notes</span>
                 <textarea id="meetingTranscript" rows="12" aria-label="Transcript or notes" placeholder="Transcript and meeting notes"></textarea>
@@ -487,7 +509,8 @@
       </div>
     </template>
 
-    <script src="supabase-config.js?v=20260622-transcription"></script>
-    <script src="app.js?v=20260710-simple-menu"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+    <script src="supabase-config.js?v=20260715-financials"></script>
+    <script src="app.js?v=20260715-financials"></script>
   </body>
 </html>
